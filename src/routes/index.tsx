@@ -320,7 +320,7 @@ function ExamGeneratorPage() {
         {!mutation.isPending && displayedQuestions.length > 0 && (
           <section className="space-y-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold">Exam preview</h2>
+              <h2 className="text-base font-semibold">{reviewMode ? "Exam review" : "Exam preview"}</h2>
               <span className="text-xs text-muted-foreground">
                 {displayedQuestions.length} question
                 {displayedQuestions.length === 1 ? "" : "s"} · {difficulty}
@@ -371,15 +371,27 @@ function ExamGeneratorPage() {
                           : " Try reviewing the explanations and retake the exam."}
                       </p>
                     </div>
-                    <div
-                      className={cn(
-                        "rounded-md px-3 py-1 text-sm font-bold",
-                        passed
-                          ? "bg-green-500/10 text-green-700"
-                          : "bg-amber-500/10 text-amber-700"
-                      )}
-                    >
-                      {pct}%
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setReviewMode(true);
+                          setReviewIndex(0);
+                        }}
+                      >
+                        Review exam
+                      </Button>
+                      <div
+                        className={cn(
+                          "rounded-md px-3 py-1 text-sm font-bold",
+                          passed
+                            ? "bg-green-500/10 text-green-700"
+                            : "bg-amber-500/10 text-amber-700"
+                        )}
+                      >
+                        {pct}%
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -387,7 +399,7 @@ function ExamGeneratorPage() {
             })()}
 
             {/* Finish exam button — reveals all remaining answers at once */}
-            {displayedQuestions.some((q) => !revealed[q.question_number]) && (
+            {!reviewMode && displayedQuestions.some((q) => !revealed[q.question_number]) && (
               <div className="flex justify-end">
                 <Button
                   size="sm"
