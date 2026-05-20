@@ -24,6 +24,8 @@ import {
   RefreshCw,
   Shuffle,
   Trophy,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
