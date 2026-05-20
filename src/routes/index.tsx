@@ -96,6 +96,8 @@ function ExamGeneratorPage() {
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
+  const [reviewMode, setReviewMode] = useState(false);
+  const [reviewIndex, setReviewIndex] = useState(0);
 
   // Persist settings to localStorage whenever they change.
   useEffect(() => {
@@ -116,6 +118,8 @@ function ExamGeneratorPage() {
     onSuccess: () => {
       setAnswers({});
       setRevealed({});
+      setReviewMode(false);
+      setReviewIndex(0);
       setShuffleSeed((s) => s + 1);
     },
   });
@@ -130,6 +134,8 @@ function ExamGeneratorPage() {
   useEffect(() => {
     setAnswers({});
     setRevealed({});
+    setReviewMode(false);
+    setReviewIndex(0);
   }, [topic, difficulty, numQuestions]);
 
   // Auto-generate on input changes (debounced).
@@ -171,6 +177,8 @@ function ExamGeneratorPage() {
   useEffect(() => {
     setAnswers({});
     setRevealed({});
+    setReviewMode(false);
+    setReviewIndex(0);
   }, [shuffleOptions, shuffleSeed]);
 
   return (
