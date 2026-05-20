@@ -123,6 +123,12 @@ function ExamGeneratorPage() {
     mutation.mutate({ topic: t, difficulty, numQuestions });
   }, [topic, difficulty, numQuestions, mutation]);
 
+  // Reset answers/revealed immediately when inputs change so old selections don't linger.
+  useEffect(() => {
+    setAnswers({});
+    setRevealed({});
+  }, [topic, difficulty, numQuestions]);
+
   // Auto-generate on input changes (debounced).
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstRunRef = useRef(true);
