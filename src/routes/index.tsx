@@ -23,6 +23,7 @@ import {
   Sparkles,
   RefreshCw,
   Shuffle,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
