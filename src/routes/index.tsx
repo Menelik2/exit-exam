@@ -317,6 +317,84 @@ function ExamGeneratorPage() {
               </span>
             </div>
 
+            {/* Results summary — shows when every question has been revealed */}
+            {(() => {
+              const total = displayedQuestions.length;
+              const revealedCount = displayedQuestions.filter(
+                (q) => revealed[q.question_number]
+              ).length;
+              const allRevealed = revealedCount === total && total > 0;
+              const correctCount = displayedQuestions.filter(
+                (q) =>
+                  revealed[q.question_number] &&
+                  answers[q.question_number] === q.correct_answer
+              ).length;
+              const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+              if (!allRevealed) return null;
+              const passed = pct >= 70;
+              return (
+                <Card
+                  className={cn(
+                    "border-2",
+                    passed
+                      ? "border-green-500/40 bg-green-500/5"
+                      : "border-amber-500/40 bg-amber-500/5"
+                  )}
+                >
+                  <CardContent className="flex items-center gap-4 px-5 py-4">
+                    <div
+                      className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                        passed ? "bg-green-500/15 text-green-600" : "bg-amber-500/15 text-amber-600"
+                      )}
+                    >
+                      <Trophy className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">
+                        {passed ? "Congratulations!" : "Keep practicing!"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        You scored {correctCount}/{total} ({pct}%).
+                        {passed
+                          ? " You passed the exam."
+                          : " Try reviewing the explanations and retake the exam."}
+                      </p>
+                    </div>
+                    <div
+                      className={cn(
+                        "rounded-md px-3 py-1 text-sm font-bold",
+                        passed
+                          ? "bg-green-500/10 text-green-700"
+                          : "bg-amber-500/10 text-amber-700"
+                      )}
+                    >
+                      {pct}%
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {/* Finish exam button — reveals all remaining answers at once */}
+            {displayedQuestions.some((q) => !revealed[q.question_number]) && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const allRevealed: Record<number, boolean> = {};
+                    displayedQuestions.forEach((q) => {
+                      allRevealed[q.question_number] = true;
+                    });
+                    setRevealed(allRevealed);
+                  }}
+                >
+                  Finish exam & reveal all
+                </Button>
+              </div>
+            )}
+
             {displayedQuestions.map((q) => {
               const selected = answers[q.question_number];
               const isRevealed = revealed[q.question_number];
