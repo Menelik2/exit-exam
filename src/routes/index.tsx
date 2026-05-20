@@ -24,6 +24,8 @@ import {
   RefreshCw,
   Shuffle,
   Trophy,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +96,8 @@ function ExamGeneratorPage() {
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
+  const [reviewMode, setReviewMode] = useState(false);
+  const [reviewIndex, setReviewIndex] = useState(0);
 
   // Persist settings to localStorage whenever they change.
   useEffect(() => {
@@ -114,6 +118,8 @@ function ExamGeneratorPage() {
     onSuccess: () => {
       setAnswers({});
       setRevealed({});
+      setReviewMode(false);
+      setReviewIndex(0);
       setShuffleSeed((s) => s + 1);
     },
   });
@@ -128,6 +134,8 @@ function ExamGeneratorPage() {
   useEffect(() => {
     setAnswers({});
     setRevealed({});
+    setReviewMode(false);
+    setReviewIndex(0);
   }, [topic, difficulty, numQuestions]);
 
   // Auto-generate on input changes (debounced).
@@ -169,6 +177,8 @@ function ExamGeneratorPage() {
   useEffect(() => {
     setAnswers({});
     setRevealed({});
+    setReviewMode(false);
+    setReviewIndex(0);
   }, [shuffleOptions, shuffleSeed]);
 
   return (
@@ -310,7 +320,7 @@ function ExamGeneratorPage() {
         {!mutation.isPending && displayedQuestions.length > 0 && (
           <section className="space-y-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold">Exam preview</h2>
+              <h2 className="text-base font-semibold">{reviewMode ? "Exam review" : "Exam preview"}</h2>
               <span className="text-xs text-muted-foreground">
                 {displayedQuestions.length} question
                 {displayedQuestions.length === 1 ? "" : "s"} · {difficulty}
@@ -361,15 +371,27 @@ function ExamGeneratorPage() {
                           : " Try reviewing the explanations and retake the exam."}
                       </p>
                     </div>
-                    <div
-                      className={cn(
-                        "rounded-md px-3 py-1 text-sm font-bold",
-                        passed
-                          ? "bg-green-500/10 text-green-700"
-                          : "bg-amber-500/10 text-amber-700"
-                      )}
-                    >
-                      {pct}%
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setReviewMode(true);
+                          setReviewIndex(0);
+                        }}
+                      >
+                        Review exam
+                      </Button>
+                      <div
+                        className={cn(
+                          "rounded-md px-3 py-1 text-sm font-bold",
+                          passed
+                            ? "bg-green-500/10 text-green-700"
+                            : "bg-amber-500/10 text-amber-700"
+                        )}
+                      >
+                        {pct}%
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -377,7 +399,7 @@ function ExamGeneratorPage() {
             })()}
 
             {/* Finish exam button — reveals all remaining answers at once */}
-            {displayedQuestions.some((q) => !revealed[q.question_number]) && (
+            {!reviewMode && displayedQuestions.some((q) => !revealed[q.question_number]) && (
               <div className="flex justify-end">
                 <Button
                   size="sm"
@@ -395,88 +417,222 @@ function ExamGeneratorPage() {
               </div>
             )}
 
-            {displayedQuestions.map((q) => {
-              const selected = answers[q.question_number];
-              const isRevealed = revealed[q.question_number];
-              const isCorrect = selected === q.correct_answer;
-              return (
-                <Card key={q.question_number}>
-                  <CardHeader>
-                    <CardTitle className="text-base">
-                      <span className="mr-2 text-muted-foreground">Q{q.question_number}.</span>
-                      {q.question}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="grid gap-2">
-                      {q.options.map((opt, i) => {
-                        const letter = String.fromCharCode(65 + i);
-                        const isSelected = selected === opt;
-                        const isAnswer = opt === q.correct_answer;
-                        return (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() =>
-                              setAnswers((a) => ({ ...a, [q.question_number]: opt }))
-                            }
-                            disabled={isRevealed}
+            {reviewMode ? (
+              <div className="space-y-4">
+                {/* Progress dots */}
+                <div className="flex items-center gap-1.5">
+                  {displayedQuestions.map((q, i) => {
+                    const correct = answers[q.question_number] === q.correct_answer;
+                    const isCurrent = i === reviewIndex;
+                    return (
+                      <button
+                        key={q.question_number}
+                        onClick={() => setReviewIndex(i)}
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-full transition-all",
+                          correct ? "bg-green-500" : "bg-destructive",
+                          isCurrent && "scale-125 ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        )}
+                        aria-label={`Jump to question ${q.question_number}`}
+                      />
+                    );
+                  })}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    Question {reviewIndex + 1} of {displayedQuestions.length}
+                  </span>
+                </div>
+
+                {(() => {
+                  const q = displayedQuestions[reviewIndex];
+                  const selected = answers[q.question_number];
+                  const isCorrect = selected === q.correct_answer;
+                  return (
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <CardTitle className="text-base">
+                            <span className="mr-2 text-muted-foreground">
+                              Q{q.question_number}.
+                            </span>
+                            {q.question}
+                          </CardTitle>
+                          <span
                             className={cn(
-                              "flex items-start gap-3 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors",
-                              "hover:bg-accent hover:text-accent-foreground",
-                              isSelected && !isRevealed && "border-primary bg-primary/5",
-                              isRevealed && isAnswer && "border-green-500/60 bg-green-500/10",
-                              isRevealed &&
-                                isSelected &&
-                                !isAnswer &&
-                                "border-destructive/60 bg-destructive/10",
+                              "inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
+                              isCorrect
+                                ? "bg-green-500/10 text-green-600"
+                                : "bg-destructive/10 text-destructive"
                             )}
                           >
-                            <span className="font-mono text-xs font-semibold text-muted-foreground">
-                              {letter}.
-                            </span>
-                            <span className="flex-1">{opt}</span>
-                            {isRevealed && isAnswer && (
-                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            {isCorrect ? (
+                              <CheckCircle2 className="h-3 w-3" />
+                            ) : (
+                              <XCircle className="h-3 w-3" />
                             )}
-                            {isRevealed && isSelected && !isAnswer && (
-                              <XCircle className="h-4 w-4 text-destructive" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                            {isCorrect ? "Correct" : "Incorrect"}
+                          </span>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="grid gap-2">
+                          {q.options.map((opt, i) => {
+                            const letter = String.fromCharCode(65 + i);
+                            const isSelected = selected === opt;
+                            const isAnswer = opt === q.correct_answer;
+                            return (
+                              <div
+                                key={i}
+                                className={cn(
+                                  "flex items-start gap-3 rounded-md border px-3 py-2 text-left text-sm",
+                                  isAnswer && "border-green-500/60 bg-green-500/10",
+                                  isSelected && !isAnswer && "border-destructive/60 bg-destructive/10",
+                                  !isSelected && !isAnswer && "border-border opacity-50"
+                                )}
+                              >
+                                <span className="font-mono text-xs font-semibold text-muted-foreground">
+                                  {letter}.
+                                </span>
+                                <span className="flex-1">{opt}</span>
+                                {isAnswer && (
+                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                )}
+                                {isSelected && !isAnswer && (
+                                  <XCircle className="h-4 w-4 text-destructive" />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div
+                          className={cn(
+                            "rounded-md border px-3 py-2 text-sm",
+                            isCorrect
+                              ? "border-green-500/40 bg-green-500/5"
+                              : "border-destructive/40 bg-destructive/5"
+                          )}
+                        >
+                          <p className="mb-1 font-medium">Answer: {q.correct_answer}</p>
+                          <p className="text-muted-foreground">{q.explanation}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
 
-                    {!isRevealed ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={!selected}
-                        onClick={() =>
-                          setRevealed((r) => ({ ...r, [q.question_number]: true }))
-                        }
-                      >
-                        Check answer
-                      </Button>
-                    ) : (
-                      <div
-                        className={cn(
-                          "rounded-md border px-3 py-2 text-sm",
-                          isCorrect
-                            ? "border-green-500/40 bg-green-500/5"
-                            : "border-destructive/40 bg-destructive/5",
-                        )}
-                      >
-                        <p className="mb-1 font-medium">
-                          {isCorrect ? "Correct" : "Incorrect"} — Answer: {q.correct_answer}
-                        </p>
-                        <p className="text-muted-foreground">{q.explanation}</p>
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={reviewIndex === 0}
+                    onClick={() => setReviewIndex((i) => i - 1)}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" />
+                    Previous
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {reviewIndex + 1} / {displayedQuestions.length}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={reviewIndex === displayedQuestions.length - 1}
+                    onClick={() => setReviewIndex((i) => i + 1)}
+                  >
+                    Next
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="flex justify-center">
+                  <Button variant="ghost" size="sm" onClick={() => setReviewMode(false)}>
+                    Exit review
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              displayedQuestions.map((q) => {
+                const selected = answers[q.question_number];
+                const isRevealed = revealed[q.question_number];
+                const isCorrect = selected === q.correct_answer;
+                return (
+                  <Card key={q.question_number}>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        <span className="mr-2 text-muted-foreground">Q{q.question_number}.</span>
+                        {q.question}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="grid gap-2">
+                        {q.options.map((opt, i) => {
+                          const letter = String.fromCharCode(65 + i);
+                          const isSelected = selected === opt;
+                          const isAnswer = opt === q.correct_answer;
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() =>
+                                setAnswers((a) => ({ ...a, [q.question_number]: opt }))
+                              }
+                              disabled={isRevealed}
+                              className={cn(
+                                "flex items-start gap-3 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors",
+                                "hover:bg-accent hover:text-accent-foreground",
+                                isSelected && !isRevealed && "border-primary bg-primary/5",
+                                isRevealed && isAnswer && "border-green-500/60 bg-green-500/10",
+                                isRevealed &&
+                                  isSelected &&
+                                  !isAnswer &&
+                                  "border-destructive/60 bg-destructive/10"
+                              )}
+                            >
+                              <span className="font-mono text-xs font-semibold text-muted-foreground">
+                                {letter}.
+                              </span>
+                              <span className="flex-1">{opt}</span>
+                              {isRevealed && isAnswer && (
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              )}
+                              {isRevealed && isSelected && !isAnswer && (
+                                <XCircle className="h-4 w-4 text-destructive" />
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
+
+                      {!isRevealed ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!selected}
+                          onClick={() =>
+                            setRevealed((r) => ({ ...r, [q.question_number]: true }))
+                          }
+                        >
+                          Check answer
+                        </Button>
+                      ) : (
+                        <div
+                          className={cn(
+                            "rounded-md border px-3 py-2 text-sm",
+                            isCorrect
+                              ? "border-green-500/40 bg-green-500/5"
+                              : "border-destructive/40 bg-destructive/5"
+                          )}
+                        >
+                          <p className="mb-1 font-medium">
+                            {isCorrect ? "Correct" : "Incorrect"} — Answer: {q.correct_answer}
+                          </p>
+                          <p className="text-muted-foreground">{q.explanation}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
           </section>
         )}
 
