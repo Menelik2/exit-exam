@@ -57,15 +57,54 @@ function shuffle<T>(arr: T[], seed: number): T[] {
   return a;
 }
 
+const LS_KEY = "exam-gen-settings";
+
+function loadSettings() {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const validDiff = (["Beginner", "Intermediate", "Advanced"] as Difficulty[]).includes(
+      parsed.difficulty
+    );
+    return {
+      topic: typeof parsed.topic === "string" ? parsed.topic : "",
+      difficulty: validDiff ? (parsed.difficulty as Difficulty) : ("Intermediate" as Difficulty),
+      numQuestions:
+        typeof parsed.numQuestions === "number"
+          ? Math.max(1, Math.min(20, parsed.numQuestions))
+          : 5,
+      autoGenerate: typeof parsed.autoGenerate === "boolean" ? parsed.autoGenerate : true,
+      shuffleOptions: typeof parsed.shuffleOptions === "boolean" ? parsed.shuffleOptions : false,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function ExamGeneratorPage() {
-  const [topic, setTopic] = useState("");
-  const [difficulty, setDifficulty] = useState<Difficulty>("Intermediate");
-  const [numQuestions, setNumQuestions] = useState(5);
-  const [autoGenerate, setAutoGenerate] = useState(true);
-  const [shuffleOptions, setShuffleOptions] = useState(false);
+  const saved = loadSettings();
+  const [topic, setTopic] = useState(saved?.topic ?? "");
+  const [difficulty, setDifficulty] = useState<Difficulty>(saved?.difficulty ?? "Intermediate");
+  const [numQuestions, setNumQuestions] = useState(saved?.numQuestions ?? 5);
+  const [autoGenerate, setAutoGenerate] = useState(saved?.autoGenerate ?? true);
+  const [shuffleOptions, setShuffleOptions] = useState(saved?.shuffleOptions ?? false);
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
+
+  // Persist settings to localStorage whenever they change.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        LS_KEY,
+        JSON.stringify({ topic, difficulty, numQuestions, autoGenerate, shuffleOptions })
+      );
+    } catch {
+      // ignore
+    }
+  }, [topic, difficulty, numQuestions, autoGenerate, shuffleOptions]);
 
   const generateFn = useServerFn(generateExam);
   const mutation = useMutation({
