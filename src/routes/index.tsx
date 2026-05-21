@@ -113,8 +113,12 @@ function ExamGeneratorPage() {
 
   const generateFn = useServerFn(generateExam);
   const mutation = useMutation({
-    mutationFn: (vars: { topic: string; difficulty: Difficulty; numQuestions: number }) =>
-      generateFn({ data: vars }),
+    mutationFn: (vars: {
+      topic: string;
+      difficulty: Difficulty;
+      numQuestions: number;
+      nonce: string;
+    }) => generateFn({ data: vars }),
     onSuccess: () => {
       setAnswers({});
       setRevealed({});
@@ -127,7 +131,8 @@ function ExamGeneratorPage() {
   const run = useCallback(() => {
     const t = topic.trim();
     if (!t) return;
-    mutation.mutate({ topic: t, difficulty, numQuestions });
+    const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    mutation.mutate({ topic: t, difficulty, numQuestions, nonce });
   }, [topic, difficulty, numQuestions, mutation]);
 
   // Reset answers/revealed immediately when inputs change so old selections don't linger.
