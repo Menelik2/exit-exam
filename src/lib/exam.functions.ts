@@ -4,7 +4,8 @@ import { z } from "zod";
 const InputSchema = z.object({
   topic: z.string().min(1).max(200),
   difficulty: z.enum(["Beginner", "Intermediate", "Advanced"]),
-  numQuestions: z.number().int().min(1).max(20),
+  numQuestions: z.number().int().min(1).max(30),
+  nonce: z.string().optional(),
 });
 
 export type ExamQuestion = {
@@ -34,7 +35,8 @@ The JSON structure must be an object with a "questions" array, where each item c
 
     const userPrompt = `Topic: ${data.topic}
 Difficulty: ${data.difficulty}
-Number of Questions: ${data.numQuestions}`;
+Number of Questions: ${data.numQuestions}
+Variation seed: ${data.nonce ?? Date.now()} — generate a fresh, distinct set of questions different from any prior generation. Vary subtopics, phrasing, and which option is correct.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -43,7 +45,7 @@ Number of Questions: ${data.numQuestions}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-flash-lite",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

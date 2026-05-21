@@ -76,7 +76,7 @@ function loadSettings() {
       difficulty: validDiff ? (parsed.difficulty as Difficulty) : ("Intermediate" as Difficulty),
       numQuestions:
         typeof parsed.numQuestions === "number"
-          ? Math.max(1, Math.min(20, parsed.numQuestions))
+          ? Math.max(1, Math.min(30, parsed.numQuestions))
           : 5,
       autoGenerate: typeof parsed.autoGenerate === "boolean" ? parsed.autoGenerate : true,
       shuffleOptions: typeof parsed.shuffleOptions === "boolean" ? parsed.shuffleOptions : false,
@@ -113,8 +113,12 @@ function ExamGeneratorPage() {
 
   const generateFn = useServerFn(generateExam);
   const mutation = useMutation({
-    mutationFn: (vars: { topic: string; difficulty: Difficulty; numQuestions: number }) =>
-      generateFn({ data: vars }),
+    mutationFn: (vars: {
+      topic: string;
+      difficulty: Difficulty;
+      numQuestions: number;
+      nonce: string;
+    }) => generateFn({ data: vars }),
     onSuccess: () => {
       setAnswers({});
       setRevealed({});
@@ -127,7 +131,8 @@ function ExamGeneratorPage() {
   const run = useCallback(() => {
     const t = topic.trim();
     if (!t) return;
-    mutation.mutate({ topic: t, difficulty, numQuestions });
+    const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    mutation.mutate({ topic: t, difficulty, numQuestions, nonce });
   }, [topic, difficulty, numQuestions, mutation]);
 
   // Reset answers/revealed immediately when inputs change so old selections don't linger.
@@ -237,11 +242,11 @@ function ExamGeneratorPage() {
                     id="num"
                     type="number"
                     min={1}
-                    max={20}
+                    max={30}
                     className="w-[110px]"
                     value={numQuestions}
                     onChange={(e) =>
-                      setNumQuestions(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
+                      setNumQuestions(Math.max(1, Math.min(30, Number(e.target.value) || 1)))
                     }
                   />
                 </div>
