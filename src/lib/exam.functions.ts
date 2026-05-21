@@ -35,7 +35,8 @@ The JSON structure must be an object with a "questions" array, where each item c
 
     const userPrompt = `Topic: ${data.topic}
 Difficulty: ${data.difficulty}
-Number of Questions: ${data.numQuestions}`;
+Number of Questions: ${data.numQuestions}
+Variation seed: ${data.nonce ?? Date.now()} — generate a fresh, distinct set of questions different from any prior generation. Vary subtopics, phrasing, and which option is correct.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
