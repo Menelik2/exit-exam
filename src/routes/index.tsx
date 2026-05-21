@@ -143,6 +143,7 @@ function ExamGeneratorPage() {
     setRevealed({});
     setReviewMode(false);
     setReviewIndex(0);
+    setTakingIndex(0);
   }, [topic, difficulty, numQuestions]);
 
   // Auto-generate on input changes (debounced).
