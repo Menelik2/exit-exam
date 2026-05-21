@@ -125,6 +125,7 @@ function ExamGeneratorPage() {
       setRevealed({});
       setReviewMode(false);
       setReviewIndex(0);
+      setTakingIndex(0);
       setShuffleSeed((s) => s + 1);
     },
   });
