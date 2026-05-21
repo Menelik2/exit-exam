@@ -76,7 +76,7 @@ function loadSettings() {
       difficulty: validDiff ? (parsed.difficulty as Difficulty) : ("Intermediate" as Difficulty),
       numQuestions:
         typeof parsed.numQuestions === "number"
-          ? Math.max(1, Math.min(20, parsed.numQuestions))
+          ? Math.max(1, Math.min(30, parsed.numQuestions))
           : 5,
       autoGenerate: typeof parsed.autoGenerate === "boolean" ? parsed.autoGenerate : true,
       shuffleOptions: typeof parsed.shuffleOptions === "boolean" ? parsed.shuffleOptions : false,
