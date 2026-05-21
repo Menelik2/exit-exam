@@ -4,7 +4,8 @@ import { z } from "zod";
 const InputSchema = z.object({
   topic: z.string().min(1).max(200),
   difficulty: z.enum(["Beginner", "Intermediate", "Advanced"]),
-  numQuestions: z.number().int().min(1).max(20),
+  numQuestions: z.number().int().min(1).max(30),
+  nonce: z.string().optional(),
 });
 
 export type ExamQuestion = {
