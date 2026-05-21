@@ -407,24 +407,6 @@ function ExamGeneratorPage() {
               );
             })()}
 
-            {/* Finish exam button — reveals all remaining answers at once */}
-            {!reviewMode && displayedQuestions.some((q) => !revealed[q.question_number]) && (
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const allRevealed: Record<number, boolean> = {};
-                    displayedQuestions.forEach((q) => {
-                      allRevealed[q.question_number] = true;
-                    });
-                    setRevealed(allRevealed);
-                  }}
-                >
-                  Finish exam & reveal all
-                </Button>
-              </div>
-            )}
 
             {reviewMode ? (
               <div className="space-y-4">
