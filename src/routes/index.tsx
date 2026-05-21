@@ -242,11 +242,11 @@ function ExamGeneratorPage() {
                     id="num"
                     type="number"
                     min={1}
-                    max={20}
+                    max={30}
                     className="w-[110px]"
                     value={numQuestions}
                     onChange={(e) =>
-                      setNumQuestions(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
+                      setNumQuestions(Math.max(1, Math.min(30, Number(e.target.value) || 1)))
                     }
                   />
                 </div>
