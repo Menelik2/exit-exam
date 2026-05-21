@@ -98,6 +98,7 @@ function ExamGeneratorPage() {
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [reviewMode, setReviewMode] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
+  const [takingIndex, setTakingIndex] = useState(0);
 
   // Persist settings to localStorage whenever they change.
   useEffect(() => {
@@ -124,6 +125,7 @@ function ExamGeneratorPage() {
       setRevealed({});
       setReviewMode(false);
       setReviewIndex(0);
+      setTakingIndex(0);
       setShuffleSeed((s) => s + 1);
     },
   });
@@ -141,6 +143,7 @@ function ExamGeneratorPage() {
     setRevealed({});
     setReviewMode(false);
     setReviewIndex(0);
+    setTakingIndex(0);
   }, [topic, difficulty, numQuestions]);
 
   // Auto-generate on input changes (debounced).
@@ -184,6 +187,7 @@ function ExamGeneratorPage() {
     setRevealed({});
     setReviewMode(false);
     setReviewIndex(0);
+    setTakingIndex(0);
   }, [shuffleOptions, shuffleSeed]);
 
   return (
@@ -403,24 +407,6 @@ function ExamGeneratorPage() {
               );
             })()}
 
-            {/* Finish exam button — reveals all remaining answers at once */}
-            {!reviewMode && displayedQuestions.some((q) => !revealed[q.question_number]) && (
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const allRevealed: Record<number, boolean> = {};
-                    displayedQuestions.forEach((q) => {
-                      allRevealed[q.question_number] = true;
-                    });
-                    setRevealed(allRevealed);
-                  }}
-                >
-                  Finish exam & reveal all
-                </Button>
-              </div>
-            )}
 
             {reviewMode ? (
               <div className="space-y-4">
@@ -554,13 +540,43 @@ function ExamGeneratorPage() {
                   </Button>
                 </div>
               </div>
-            ) : (
-              displayedQuestions.map((q) => {
-                const selected = answers[q.question_number];
-                const isRevealed = revealed[q.question_number];
-                const isCorrect = selected === q.correct_answer;
-                return (
-                  <Card key={q.question_number}>
+            ) : (() => {
+              const total = displayedQuestions.length;
+              const safeIndex = Math.min(takingIndex, total - 1);
+              const q = displayedQuestions[safeIndex];
+              const selected = answers[q.question_number];
+              const isRevealed = revealed[q.question_number];
+              const isCorrect = selected === q.correct_answer;
+              const answeredCount = displayedQuestions.filter(
+                (qq) => answers[qq.question_number] !== undefined
+              ).length;
+              return (
+                <div className="space-y-4">
+                  {/* Progress dots — clickable */}
+                  <div className="flex items-center gap-1.5">
+                    {displayedQuestions.map((qq, i) => {
+                      const answered = answers[qq.question_number] !== undefined;
+                      const isCurrent = i === safeIndex;
+                      return (
+                        <button
+                          key={qq.question_number}
+                          type="button"
+                          onClick={() => setTakingIndex(i)}
+                          className={cn(
+                            "h-2.5 w-2.5 rounded-full transition-all",
+                            answered ? "bg-primary" : "bg-muted-foreground/30",
+                            isCurrent && "scale-125 ring-2 ring-primary ring-offset-2 ring-offset-background"
+                          )}
+                          aria-label={`Go to question ${qq.question_number}`}
+                        />
+                      );
+                    })}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      Question {safeIndex + 1} of {total} · {answeredCount}/{total} answered
+                    </span>
+                  </div>
+
+                  <Card>
                     <CardHeader>
                       <CardTitle className="text-base">
                         <span className="mr-2 text-muted-foreground">Q{q.question_number}.</span>
@@ -607,18 +623,7 @@ function ExamGeneratorPage() {
                         })}
                       </div>
 
-                      {!isRevealed ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          disabled={!selected}
-                          onClick={() =>
-                            setRevealed((r) => ({ ...r, [q.question_number]: true }))
-                          }
-                        >
-                          Check answer
-                        </Button>
-                      ) : (
+                      {isRevealed && (
                         <div
                           className={cn(
                             "rounded-md border px-3 py-2 text-sm",
@@ -635,9 +640,56 @@ function ExamGeneratorPage() {
                       )}
                     </CardContent>
                   </Card>
-                );
-              })
-            )}
+
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={safeIndex === 0}
+                      onClick={() => setTakingIndex((i) => Math.max(0, i - 1))}
+                    >
+                      <ChevronLeft className="mr-1 h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setAnswers({});
+                          setRevealed({});
+                          setTakingIndex(0);
+                        }}
+                      >
+                        Exit exam
+                      </Button>
+                      {safeIndex === total - 1 ? (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const allRevealed: Record<number, boolean> = {};
+                            displayedQuestions.forEach((qq) => {
+                              allRevealed[qq.question_number] = true;
+                            });
+                            setRevealed(allRevealed);
+                          }}
+                        >
+                          Submit exam
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => setTakingIndex((i) => Math.min(total - 1, i + 1))}
+                        >
+                          Next
+                          <ChevronRight className="ml-1 h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </section>
         )}
 
