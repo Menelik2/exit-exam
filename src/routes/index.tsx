@@ -606,9 +606,9 @@ function ExamGeneratorPage() {
                               className={cn(
                                 "flex items-start gap-3 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors",
                                 "hover:bg-accent hover:text-accent-foreground",
-                                isSelected && !isRevealed && "border-primary bg-primary/5",
-                                isRevealed && isAnswer && "border-green-500/60 bg-green-500/10",
-                                isRevealed &&
+                                isSelected && !showAnswer && "border-primary bg-primary/5",
+                                showAnswer && isAnswer && "border-green-500/60 bg-green-500/10",
+                                showAnswer &&
                                   isSelected &&
                                   !isAnswer &&
                                   "border-destructive/60 bg-destructive/10"
@@ -618,16 +618,25 @@ function ExamGeneratorPage() {
                                 {letter}.
                               </span>
                               <span className="flex-1">{opt}</span>
-                              {isRevealed && isAnswer && (
+                              {showAnswer && isAnswer && (
                                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                               )}
-                              {isRevealed && isSelected && !isAnswer && (
+                              {showAnswer && isSelected && !isAnswer && (
                                 <XCircle className="h-4 w-4 text-destructive" />
                               )}
                             </button>
                           );
                         })}
                       </div>
+
+                      {isPeeking && !isRevealed && (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+                          <p className="mb-1 font-medium text-amber-700">
+                            Preview — Answer: {q.correct_answer}
+                          </p>
+                          <p className="text-muted-foreground">{q.explanation}</p>
+                        </div>
+                      )}
 
                       {isRevealed && (
                         <div
