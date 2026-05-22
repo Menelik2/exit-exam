@@ -249,13 +249,25 @@ function ExamGeneratorPage() {
                   <Input
                     id="num"
                     type="number"
+                    inputMode="numeric"
                     min={1}
                     max={30}
+                    step={1}
                     className="w-[110px]"
-                    value={numQuestions}
-                    onChange={(e) =>
-                      setNumQuestions(Math.max(1, Math.min(30, Number(e.target.value) || 1)))
-                    }
+                    value={numQuestions === 0 ? "" : numQuestions}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        setNumQuestions(0);
+                        return;
+                      }
+                      const n = parseInt(raw, 10);
+                      if (Number.isNaN(n)) return;
+                      setNumQuestions(Math.min(30, Math.max(0, n)));
+                    }}
+                    onBlur={() => {
+                      if (!numQuestions || numQuestions < 1) setNumQuestions(1);
+                    }}
                   />
                 </div>
               </div>
