@@ -550,6 +550,8 @@ function ExamGeneratorPage() {
               const q = displayedQuestions[safeIndex];
               const selected = answers[q.question_number];
               const isRevealed = revealed[q.question_number];
+              const isPeeking = !!peeked[q.question_number] && !isRevealed;
+              const showAnswer = isRevealed || isPeeking;
               const isCorrect = selected === q.correct_answer;
               const answeredCount = displayedQuestions.filter(
                 (qq) => answers[qq.question_number] !== undefined
