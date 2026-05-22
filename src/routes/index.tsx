@@ -26,6 +26,8 @@ import {
   Trophy,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -99,6 +101,7 @@ function ExamGeneratorPage() {
   const [reviewMode, setReviewMode] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
   const [takingIndex, setTakingIndex] = useState(0);
+  const [peeked, setPeeked] = useState<Record<number, boolean>>({});
 
   // Persist settings to localStorage whenever they change.
   useEffect(() => {
@@ -123,6 +126,7 @@ function ExamGeneratorPage() {
     onSuccess: () => {
       setAnswers({});
       setRevealed({});
+      setPeeked({});
       setReviewMode(false);
       setReviewIndex(0);
       setTakingIndex(0);
@@ -546,6 +550,8 @@ function ExamGeneratorPage() {
               const q = displayedQuestions[safeIndex];
               const selected = answers[q.question_number];
               const isRevealed = revealed[q.question_number];
+              const isPeeking = !!peeked[q.question_number] && !isRevealed;
+              const showAnswer = isRevealed || isPeeking;
               const isCorrect = selected === q.correct_answer;
               const answeredCount = displayedQuestions.filter(
                 (qq) => answers[qq.question_number] !== undefined
@@ -600,9 +606,9 @@ function ExamGeneratorPage() {
                               className={cn(
                                 "flex items-start gap-3 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors",
                                 "hover:bg-accent hover:text-accent-foreground",
-                                isSelected && !isRevealed && "border-primary bg-primary/5",
-                                isRevealed && isAnswer && "border-green-500/60 bg-green-500/10",
-                                isRevealed &&
+                                isSelected && !showAnswer && "border-primary bg-primary/5",
+                                showAnswer && isAnswer && "border-green-500/60 bg-green-500/10",
+                                showAnswer &&
                                   isSelected &&
                                   !isAnswer &&
                                   "border-destructive/60 bg-destructive/10"
@@ -612,16 +618,25 @@ function ExamGeneratorPage() {
                                 {letter}.
                               </span>
                               <span className="flex-1">{opt}</span>
-                              {isRevealed && isAnswer && (
+                              {showAnswer && isAnswer && (
                                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                               )}
-                              {isRevealed && isSelected && !isAnswer && (
+                              {showAnswer && isSelected && !isAnswer && (
                                 <XCircle className="h-4 w-4 text-destructive" />
                               )}
                             </button>
                           );
                         })}
                       </div>
+
+                      {isPeeking && !isRevealed && (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+                          <p className="mb-1 font-medium text-amber-700">
+                            Preview — Answer: {q.correct_answer}
+                          </p>
+                          <p className="text-muted-foreground">{q.explanation}</p>
+                        </div>
+                      )}
 
                       {isRevealed && (
                         <div
@@ -652,12 +667,37 @@ function ExamGeneratorPage() {
                       Previous
                     </Button>
                     <div className="flex items-center gap-2">
+                      {!isRevealed && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setPeeked((p) => ({
+                              ...p,
+                              [q.question_number]: !p[q.question_number],
+                            }))
+                          }
+                        >
+                          {isPeeking ? (
+                            <>
+                              <EyeOff className="mr-1 h-4 w-4" />
+                              Hide
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="mr-1 h-4 w-4" />
+                              Preview
+                            </>
+                          )}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           setAnswers({});
                           setRevealed({});
+                          setPeeked({});
                           setTakingIndex(0);
                         }}
                       >
@@ -679,7 +719,10 @@ function ExamGeneratorPage() {
                       ) : (
                         <Button
                           size="sm"
-                          onClick={() => setTakingIndex((i) => Math.min(total - 1, i + 1))}
+                          onClick={() => {
+                            setPeeked((p) => ({ ...p, [q.question_number]: false }));
+                            setTakingIndex((i) => Math.min(total - 1, i + 1));
+                          }}
                         >
                           Next
                           <ChevronRight className="ml-1 h-4 w-4" />
