@@ -123,7 +123,6 @@ function ExamGeneratorPage() {
     onSuccess: () => {
       setAnswers({});
       setRevealed({});
-      setPeeked({});
       setReviewMode(false);
       setReviewIndex(0);
       setTakingIndex(0);
