@@ -673,7 +673,7 @@ function ExamGeneratorPage() {
                         onClick={() => {
                           setAnswers({});
                           setRevealed({});
-                          setPeeked({});
+                          
                           setTakingIndex(0);
                         }}
                       >
