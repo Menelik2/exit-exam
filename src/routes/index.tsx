@@ -611,9 +611,10 @@ function ExamGeneratorPage() {
                             <button
                               key={i}
                               type="button"
-                              onClick={() =>
-                                setAnswers((a) => ({ ...a, [q.question_number]: opt }))
-                              }
+                              onClick={() => {
+                                setAnswers((a) => ({ ...a, [q.question_number]: opt }));
+                                setRevealed((r) => ({ ...r, [q.question_number]: true }));
+                              }}
                               disabled={isRevealed}
                               className={cn(
                                 "flex items-start gap-3 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors",
@@ -679,30 +680,6 @@ function ExamGeneratorPage() {
                       Previous
                     </Button>
                     <div className="flex items-center gap-2">
-                      {!isRevealed && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setPeeked((p) => ({
-                              ...p,
-                              [q.question_number]: !p[q.question_number],
-                            }))
-                          }
-                        >
-                          {isPeeking ? (
-                            <>
-                              <EyeOff className="mr-1 h-4 w-4" />
-                              Hide
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="mr-1 h-4 w-4" />
-                              Preview
-                            </>
-                          )}
-                        </Button>
-                      )}
                       <Button
                         variant="ghost"
                         size="sm"
