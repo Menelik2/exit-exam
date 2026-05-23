@@ -6,6 +6,7 @@ const InputSchema = z.object({
   difficulty: z.enum(["Beginner", "Intermediate", "Advanced"]),
   numQuestions: z.number().int().min(1).max(30),
   nonce: z.string().optional(),
+  avoid: z.array(z.string().min(1).max(500)).max(500).optional(),
 });
 
 export type ExamQuestion = {
