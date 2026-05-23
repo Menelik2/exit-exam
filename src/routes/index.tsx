@@ -190,6 +190,47 @@ function ExamGeneratorPage() {
     setTakingIndex(0);
   }, [shuffleOptions, shuffleSeed]);
 
+  // Keyboard shortcuts during exam taking: 1-4 selects option, ←/→ navigate.
+  const rawQs = mutation.data?.questions ?? [];
+  const dispQs = useMemo(
+    () =>
+      shuffleOptions
+        ? rawQs.map((q) => ({
+            ...q,
+            options: shuffle(q.options, shuffleSeed + q.question_number * 7919),
+          }))
+        : rawQs,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mutation.data, shuffleOptions, shuffleSeed]
+  );
+  useEffect(() => {
+    if (reviewMode || dispQs.length === 0) return;
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const total = dispQs.length;
+      const idx = Math.min(takingIndex, total - 1);
+      const q = dispQs[idx];
+      if (!q) return;
+      if (e.key === "ArrowRight" && idx < total - 1) {
+        setTakingIndex(idx + 1);
+      } else if (e.key === "ArrowLeft" && idx > 0) {
+        setTakingIndex(idx - 1);
+      } else if (["1", "2", "3", "4"].includes(e.key)) {
+        const n = parseInt(e.key, 10) - 1;
+        const opt = q.options[n];
+        if (opt && !revealed[q.question_number]) {
+          setAnswers((a) => ({ ...a, [q.question_number]: opt }));
+          setRevealed((r) => ({ ...r, [q.question_number]: true }));
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [reviewMode, dispQs, takingIndex, revealed]);
+
+
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
