@@ -26,8 +26,6 @@ import {
   Trophy,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -101,7 +99,6 @@ function ExamGeneratorPage() {
   const [reviewMode, setReviewMode] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
   const [takingIndex, setTakingIndex] = useState(0);
-  const [peeked, setPeeked] = useState<Record<number, boolean>>({});
 
   // Persist settings to localStorage whenever they change.
   useEffect(() => {
@@ -126,7 +123,6 @@ function ExamGeneratorPage() {
     onSuccess: () => {
       setAnswers({});
       setRevealed({});
-      setPeeked({});
       setReviewMode(false);
       setReviewIndex(0);
       setTakingIndex(0);
@@ -193,6 +189,47 @@ function ExamGeneratorPage() {
     setReviewIndex(0);
     setTakingIndex(0);
   }, [shuffleOptions, shuffleSeed]);
+
+  // Keyboard shortcuts during exam taking: 1-4 selects option, ←/→ navigate.
+  const rawQs = mutation.data?.questions ?? [];
+  const dispQs = useMemo(
+    () =>
+      shuffleOptions
+        ? rawQs.map((q) => ({
+            ...q,
+            options: shuffle(q.options, shuffleSeed + q.question_number * 7919),
+          }))
+        : rawQs,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mutation.data, shuffleOptions, shuffleSeed]
+  );
+  useEffect(() => {
+    if (reviewMode || dispQs.length === 0) return;
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const total = dispQs.length;
+      const idx = Math.min(takingIndex, total - 1);
+      const q = dispQs[idx];
+      if (!q) return;
+      if (e.key === "ArrowRight" && idx < total - 1) {
+        setTakingIndex(idx + 1);
+      } else if (e.key === "ArrowLeft" && idx > 0) {
+        setTakingIndex(idx - 1);
+      } else if (["1", "2", "3", "4"].includes(e.key)) {
+        const n = parseInt(e.key, 10) - 1;
+        const opt = q.options[n];
+        if (opt && !revealed[q.question_number]) {
+          setAnswers((a) => ({ ...a, [q.question_number]: opt }));
+          setRevealed((r) => ({ ...r, [q.question_number]: true }));
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [reviewMode, dispQs, takingIndex, revealed]);
+
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -562,8 +599,7 @@ function ExamGeneratorPage() {
               const q = displayedQuestions[safeIndex];
               const selected = answers[q.question_number];
               const isRevealed = revealed[q.question_number];
-              const isPeeking = !!peeked[q.question_number] && !isRevealed;
-              const showAnswer = isRevealed || isPeeking;
+              const showAnswer = isRevealed;
               const isCorrect = selected === q.correct_answer;
               const answeredCount = displayedQuestions.filter(
                 (qq) => answers[qq.question_number] !== undefined
@@ -642,14 +678,6 @@ function ExamGeneratorPage() {
                         })}
                       </div>
 
-                      {isPeeking && !isRevealed && (
-                        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
-                          <p className="mb-1 font-medium text-amber-700">
-                            Preview — Answer: {q.correct_answer}
-                          </p>
-                          <p className="text-muted-foreground">{q.explanation}</p>
-                        </div>
-                      )}
 
                       {isRevealed && (
                         <div
@@ -686,37 +714,20 @@ function ExamGeneratorPage() {
                         onClick={() => {
                           setAnswers({});
                           setRevealed({});
-                          setPeeked({});
+                          
                           setTakingIndex(0);
                         }}
                       >
                         Exit exam
                       </Button>
-                      {safeIndex === total - 1 ? (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            const allRevealed: Record<number, boolean> = {};
-                            displayedQuestions.forEach((qq) => {
-                              allRevealed[qq.question_number] = true;
-                            });
-                            setRevealed(allRevealed);
-                          }}
-                        >
-                          Submit exam
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setPeeked((p) => ({ ...p, [q.question_number]: false }));
-                            setTakingIndex((i) => Math.min(total - 1, i + 1));
-                          }}
-                        >
-                          Next
-                          <ChevronRight className="ml-1 h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        disabled={safeIndex === total - 1}
+                        onClick={() => setTakingIndex((i) => Math.min(total - 1, i + 1))}
+                      >
+                        Next
+                        <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </div>
