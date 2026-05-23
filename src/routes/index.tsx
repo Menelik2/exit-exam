@@ -637,14 +637,6 @@ function ExamGeneratorPage() {
                         })}
                       </div>
 
-                      {isPeeking && !isRevealed && (
-                        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
-                          <p className="mb-1 font-medium text-amber-700">
-                            Preview — Answer: {q.correct_answer}
-                          </p>
-                          <p className="text-muted-foreground">{q.explanation}</p>
-                        </div>
-                      )}
 
                       {isRevealed && (
                         <div
