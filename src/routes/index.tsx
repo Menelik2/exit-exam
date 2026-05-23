@@ -692,31 +692,14 @@ function ExamGeneratorPage() {
                       >
                         Exit exam
                       </Button>
-                      {safeIndex === total - 1 ? (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            const allRevealed: Record<number, boolean> = {};
-                            displayedQuestions.forEach((qq) => {
-                              allRevealed[qq.question_number] = true;
-                            });
-                            setRevealed(allRevealed);
-                          }}
-                        >
-                          Submit exam
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setPeeked((p) => ({ ...p, [q.question_number]: false }));
-                            setTakingIndex((i) => Math.min(total - 1, i + 1));
-                          }}
-                        >
-                          Next
-                          <ChevronRight className="ml-1 h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        disabled={safeIndex === total - 1}
+                        onClick={() => setTakingIndex((i) => Math.min(total - 1, i + 1))}
+                      >
+                        Next
+                        <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </div>
