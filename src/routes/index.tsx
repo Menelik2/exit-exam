@@ -152,6 +152,7 @@ function ExamGeneratorPage() {
   useEffect(() => {
     if (!autoGenerate) return;
     if (!topic.trim()) return;
+    if (!numQuestions || numQuestions < 1) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     // Slightly longer delay on the very first keystroke so users can finish typing the topic.
     const delay = firstRunRef.current ? 900 : 600;
