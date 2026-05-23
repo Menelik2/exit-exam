@@ -113,20 +113,30 @@ function ExamGeneratorPage() {
   }, [topic, difficulty, numQuestions, autoGenerate, shuffleOptions]);
 
   const generateFn = useServerFn(generateExam);
+  // Track previously generated question texts per topic+difficulty to avoid repeats.
+  const seenRef = useRef<Map<string, string[]>>(new Map());
+  const seenKey = (t: string, d: Difficulty) => `${d}::${t.trim().toLowerCase()}`;
+
   const mutation = useMutation({
     mutationFn: (vars: {
       topic: string;
       difficulty: Difficulty;
       numQuestions: number;
       nonce: string;
+      avoid: string[];
     }) => generateFn({ data: vars }),
-    onSuccess: () => {
+    onSuccess: (res, vars) => {
       setAnswers({});
       setRevealed({});
       setReviewMode(false);
       setReviewIndex(0);
       setTakingIndex(0);
       setShuffleSeed((s) => s + 1);
+      // Record newly generated questions so the next run avoids them.
+      const key = seenKey(vars.topic, vars.difficulty);
+      const prev = seenRef.current.get(key) ?? [];
+      const next = [...prev, ...res.questions.map((q) => q.question)].slice(-200);
+      seenRef.current.set(key, next);
     },
   });
 
@@ -135,7 +145,8 @@ function ExamGeneratorPage() {
     if (!t) return;
     if (!numQuestions || numQuestions < 1) return;
     const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    mutation.mutate({ topic: t, difficulty, numQuestions, nonce });
+    const avoid = seenRef.current.get(seenKey(t, difficulty)) ?? [];
+    mutation.mutate({ topic: t, difficulty, numQuestions, nonce, avoid });
   }, [topic, difficulty, numQuestions, mutation]);
 
   // Reset answers/revealed immediately when inputs change so old selections don't linger.

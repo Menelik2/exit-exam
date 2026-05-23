@@ -6,6 +6,7 @@ const InputSchema = z.object({
   difficulty: z.enum(["Beginner", "Intermediate", "Advanced"]),
   numQuestions: z.number().int().min(1).max(30),
   nonce: z.string().optional(),
+  avoid: z.array(z.string().min(1).max(500)).max(500).optional(),
 });
 
 export type ExamQuestion = {
@@ -33,10 +34,16 @@ The JSON structure must be an object with a "questions" array, where each item c
 - "correct_answer": (string) The exact string of the correct option (must match one option verbatim).
 - "explanation": (string) A detailed explanation of why the correct answer is right, and why common misconceptions are incorrect.`;
 
+    const avoidList = (data.avoid ?? []).slice(-200);
+    const avoidBlock =
+      avoidList.length > 0
+        ? `\n\nSTRICT NO-REPEAT RULE: Do NOT repeat, rephrase, or produce semantically equivalent versions of any of these previously generated questions. Pick entirely different subtopics, angles, scenarios, and wording. Previously generated questions (one per line):\n${avoidList.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
+        : "";
+
     const userPrompt = `Topic: ${data.topic}
 Difficulty: ${data.difficulty}
 Number of Questions: ${data.numQuestions}
-Variation seed: ${data.nonce ?? Date.now()} — generate a fresh, distinct set of questions different from any prior generation. Vary subtopics, phrasing, and which option is correct.`;
+Variation seed: ${data.nonce ?? Date.now()} — generate a fresh, distinct set of questions different from any prior generation. Vary subtopics, phrasing, and which option is correct.${avoidBlock}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
