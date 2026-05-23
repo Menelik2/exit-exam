@@ -133,6 +133,7 @@ function ExamGeneratorPage() {
   const run = useCallback(() => {
     const t = topic.trim();
     if (!t) return;
+    if (!numQuestions || numQuestions < 1) return;
     const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     mutation.mutate({ topic: t, difficulty, numQuestions, nonce });
   }, [topic, difficulty, numQuestions, mutation]);
