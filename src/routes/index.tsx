@@ -611,9 +611,10 @@ function ExamGeneratorPage() {
                             <button
                               key={i}
                               type="button"
-                              onClick={() =>
-                                setAnswers((a) => ({ ...a, [q.question_number]: opt }))
-                              }
+                              onClick={() => {
+                                setAnswers((a) => ({ ...a, [q.question_number]: opt }));
+                                setRevealed((r) => ({ ...r, [q.question_number]: true }));
+                              }}
                               disabled={isRevealed}
                               className={cn(
                                 "flex items-start gap-3 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors",
