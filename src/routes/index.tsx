@@ -99,7 +99,6 @@ function ExamGeneratorPage() {
   const [reviewMode, setReviewMode] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
   const [takingIndex, setTakingIndex] = useState(0);
-  const [peeked, setPeeked] = useState<Record<number, boolean>>({});
 
   // Persist settings to localStorage whenever they change.
   useEffect(() => {
