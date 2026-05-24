@@ -114,8 +114,36 @@ function ExamGeneratorPage() {
 
   const generateFn = useServerFn(generateExam);
   // Track previously generated question texts per topic+difficulty to avoid repeats.
+  // Persisted in localStorage so repeats don't happen across refreshes.
+  const SEEN_LS_KEY = "exam-gen-seen-v1";
   const seenRef = useRef<Map<string, string[]>>(new Map());
   const seenKey = (t: string, d: Difficulty) => `${d}::${t.trim().toLowerCase()}`;
+
+  // Load persisted seen-history once on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SEEN_LS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, string[]>;
+      if (parsed && typeof parsed === "object") {
+        seenRef.current = new Map(Object.entries(parsed));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const persistSeen = useCallback(() => {
+    try {
+      const obj: Record<string, string[]> = {};
+      seenRef.current.forEach((v, k) => {
+        obj[k] = v;
+      });
+      localStorage.setItem(SEEN_LS_KEY, JSON.stringify(obj));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const mutation = useMutation({
     mutationFn: (vars: {
@@ -135,19 +163,24 @@ function ExamGeneratorPage() {
       // Record newly generated questions so the next run avoids them.
       const key = seenKey(vars.topic, vars.difficulty);
       const prev = seenRef.current.get(key) ?? [];
-      const next = [...prev, ...res.questions.map((q) => q.question)].slice(-200);
+      const next = [...prev, ...res.questions.map((q) => q.question)].slice(-500);
       seenRef.current.set(key, next);
+      persistSeen();
     },
   });
 
-  const run = useCallback(() => {
-    const t = topic.trim();
-    if (!t) return;
-    if (!numQuestions || numQuestions < 1) return;
-    const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const avoid = seenRef.current.get(seenKey(t, difficulty)) ?? [];
-    mutation.mutate({ topic: t, difficulty, numQuestions, nonce, avoid });
-  }, [topic, difficulty, numQuestions, mutation]);
+  const run = useCallback(
+    (overrideNum?: number) => {
+      const t = topic.trim();
+      if (!t) return;
+      const n = overrideNum ?? numQuestions;
+      if (!n || n < 1) return;
+      const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const avoid = seenRef.current.get(seenKey(t, difficulty)) ?? [];
+      mutation.mutate({ topic: t, difficulty, numQuestions: n, nonce, avoid });
+    },
+    [topic, difficulty, numQuestions, mutation]
+  );
 
   // Reset answers/revealed immediately when inputs change so old selections don't linger.
   useEffect(() => {
