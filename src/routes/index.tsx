@@ -490,6 +490,25 @@ function ExamGeneratorPage() {
                       >
                         Review exam
                       </Button>
+                      {correctCount < total && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            // Generate a fresh exam focused on the count of wrong answers.
+                            const wrong = total - correctCount;
+                            run(Math.max(1, Math.min(30, wrong)));
+                          }}
+                          disabled={mutation.isPending}
+                        >
+                          <RefreshCw
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              mutation.isPending && "animate-spin"
+                            )}
+                          />
+                          Retake wrong
+                        </Button>
+                      )}
                       <div
                         className={cn(
                           "rounded-md px-3 py-1 text-sm font-bold",
