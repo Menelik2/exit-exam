@@ -386,7 +386,7 @@ function ExamGeneratorPage() {
                       variant="outline"
                       size="sm"
                       disabled={mutation.isPending || !topic.trim()}
-                      onClick={run}
+                      onClick={() => run()}
                     >
                       <RefreshCw
                         className={cn("mr-2 h-4 w-4", mutation.isPending && "animate-spin")}
