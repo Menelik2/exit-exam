@@ -8,10 +8,5 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "functions": {
-    "api/[...].func": {
-      "runtime": "nodejs20.x"
-    }
-  }
+  ]
 }
