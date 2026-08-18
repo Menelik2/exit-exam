@@ -114,16 +114,6 @@ function ExamGeneratorPage() {
     }
   }, [topic, difficulty, numQuestions, autoGenerate, shuffleOptions]);
 
-  // Auto-collapse settings on mobile once an exam is generated
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(max-width: 1023px)");
-    if (mq.matches && mutation.data) {
-      setSettingsOpen(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mutation?.data]);
-
   const generateFn = useServerFn(generateExam);
   const SEEN_LS_KEY = "exam-gen-seen-v1";
   const seenRef = useRef<Map<string, string[]>>(new Map());
@@ -174,7 +164,7 @@ function ExamGeneratorPage() {
       const next = [...prev, ...res.questions.map((q) => q.question)].slice(-500);
       seenRef.current.set(key, next);
       persistSeen();
-      // Collapse settings on mobile after generate
+      // Collapse settings on mobile after generate for more exam space
       if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
         setSettingsOpen(false);
       }
@@ -289,7 +279,6 @@ function ExamGeneratorPage() {
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 p-3 sm:gap-6 sm:p-6 lg:grid-cols-[minmax(300px,360px)_1fr] lg:gap-8 lg:p-8">
         {/* ===== Sidebar / Settings ===== */}
         <aside className="order-1 flex h-fit flex-col overflow-hidden rounded-2xl border border-border bg-secondary/60 sm:rounded-3xl lg:sticky lg:top-6 lg:order-none">
-          {/* Header — always visible */}
           <div className="flex items-center justify-between gap-3 p-4 sm:p-6 lg:p-7 lg:pb-0">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 sm:h-11 sm:w-11">
@@ -302,7 +291,6 @@ function ExamGeneratorPage() {
                 <p className="truncate text-xs text-muted-foreground">AI-powered MCQ drafting</p>
               </div>
             </div>
-            {/* Mobile toggle */}
             <Button
               type="button"
               variant="outline"
@@ -324,7 +312,6 @@ function ExamGeneratorPage() {
             </Button>
           </div>
 
-          {/* Collapsible body on mobile; always open on lg+ */}
           <div
             className={cn(
               "flex flex-col gap-5 overflow-hidden transition-all duration-300 lg:gap-7",
@@ -362,7 +349,7 @@ function ExamGeneratorPage() {
                   </Label>
                   <Select value={difficulty} onValueChange={(v) => setDifficulty(v as Difficulty)}>
                     <SelectTrigger
-                      id="difficulty"
+                      id="difficulty"eclamTrigger
                       className="h-11 w-full rounded-xl border-border bg-card px-3 text-sm"
                     >
                       <SelectValue />
@@ -516,7 +503,6 @@ function ExamGeneratorPage() {
           </div>
         </aside>
 
-        {/* ===== Main workspace ===== */}
         <main className="order-2 flex min-w-0 flex-col gap-4 sm:gap-5 lg:order-none">
           {mutation.isError && (
             <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -546,7 +532,6 @@ function ExamGeneratorPage() {
 
           {!mutation.isPending && total > 0 && (
             <>
-              {/* Progress visualization */}
               <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-3 sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -763,7 +748,6 @@ function ExamGeneratorPage() {
           </div>
         )}
 
-        {/* Nav — sticky on mobile for easy thumbs */}
         <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/50 pt-4 sm:border-0 sm:pt-2">
           <Button
             variant="outline"
