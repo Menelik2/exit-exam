@@ -9,6 +9,14 @@ type ExamQuestion = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
@@ -17,21 +25,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
-      error: "Unable to generate exam right now. Please try again shortly.",
+      error:
+        "Server is missing LOVABLE_API_KEY. Add it in Vercel → Project → Settings → Environment Variables, then redeploy.",
     });
   }
 
-  const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+  let body: Record<string, unknown> = {};
+  try {
+    body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body ?? {});
+  } catch {
+    return res.status(400).json({ error: "Invalid JSON body." });
+  }
+
   const topic = String(body?.topic ?? "").trim();
   const difficulty = body?.difficulty;
   const numQuestions = Number(body?.numQuestions);
   const nonce = body?.nonce ? String(body.nonce) : String(Date.now());
-  const avoid: string[] = Array.isArray(body?.avoid) ? body.avoid.slice(-200) : [];
+  const avoid: string[] = Array.isArray(body?.avoid) ? (body.avoid as string[]).slice(-200) : [];
 
   if (!topic || topic.length > 200) {
     return res.status(400).json({ error: "Topic is required (max 200 chars)." });
   }
-  if (!["Beginner", "Intermediate", "Advanced"].includes(difficulty)) {
+  if (!["Beginner", "Intermediate", "Advanced"].includes(String(difficulty))) {
     return res.status(400).json({ error: "Invalid difficulty." });
   }
   if (!Number.isInteger(numQuestions) || numQuestions < 1 || numQuestions > 30) {
@@ -126,7 +141,7 @@ Variation seed: ${nonce} — generate a fresh, distinct set of questions differe
         return res.status(402).json({ error: "AI credits exhausted. Please add credits to continue." });
       }
       const text = await response.text();
-      return res.status(502).json({ error: `AI request failed: ${response.status} ${text}` });
+      return res.status(502).json({ error: `AI request failed: ${response.status}` });
     }
 
     const json = await response.json();
