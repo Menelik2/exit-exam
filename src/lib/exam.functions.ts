@@ -21,7 +21,9 @@ export const generateExam = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }): Promise<{ questions: ExamQuestion[] }> => {
     const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!apiKey) {
+      throw new Error("Unable to generate exam right now. Please try again shortly.");
+    }
 
     const systemPrompt = `You are an expert Computer Science professor and exam generator. Your task is to generate a multiple-choice exam based on the topic and difficulty level provided by the user.
 
