@@ -8,7 +8,108 @@ type ExamQuestion = {
   explanation: string;
 };
 
+type Difficulty = "Beginner" | "Intermediate" | "Advanced";
+
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+
+const DIFFICULTY_GUIDE: Record<Difficulty, string> = {
+  Beginner:
+    "Focus on definitions, basic concepts, and direct recall. Use clear language. Avoid multi-step reasoning.",
+  Intermediate:
+    "Test applied understanding, comparisons, and simple problem-solving. Include realistic scenarios.",
+  Advanced:
+    "Require analysis, edge cases, trade-offs, or multi-step reasoning. Prefer non-obvious but fair distractors.",
+};
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    questions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          question_number: { type: "integer" },
+          question: { type: "string" },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 4,
+            maxItems: 4,
+          },
+          correct_answer: { type: "string" },
+          explanation: { type: "string" },
+        },
+        required: [
+          "question_number",
+          "question",
+          "options",
+          "correct_answer",
+          "explanation",
+        ],
+      },
+    },
+  },
+  required: ["questions"],
+} as const;
+
+function buildSystemInstruction(difficulty: Difficulty, count: number): string {
+  return [
+    "You are a senior examiner who writes high-quality multiple-choice questions for academic and professional tests.",
+    "Your output must be valid structured data only — never markdown, never commentary.",
+    "",
+    "Quality standards:",
+    `- Write exactly ${count} questions.`,
+    "- Each question has exactly 4 options.",
+    "- correct_answer must be copied verbatim from one of the options.",
+    "- Options must not include letter prefixes (A/B/C/D) or numbering.",
+    "- Distractors must be plausible and related to the topic; avoid joke or obviously wrong options.",
+    "- Only one option is unambiguously correct.",
+    "- Explanations: 1–3 sentences stating why the correct option is right and briefly why a common mistake is wrong.",
+    "- Cover distinct subtopics; do not cluster near-identical questions.",
+    "- Prefer precise, exam-style wording over conversational filler.",
+    "",
+    `Difficulty target (${difficulty}): ${DIFFICULTY_GUIDE[difficulty]}`,
+  ].join("\n");
+}
+
+function buildUserPrompt(params: {
+  topic: string;
+  difficulty: Difficulty;
+  numQuestions: number;
+  nonce: string;
+  avoid: string[];
+}): string {
+  const { topic, difficulty, numQuestions, nonce, avoid } = params;
+
+  const lines: string[] = [
+    `Topic: ${topic}`,
+    `Difficulty: ${difficulty}`,
+    `Number of questions: ${numQuestions}`,
+    `Variation seed: ${nonce}`,
+    "",
+    "Task: Generate a fresh exam set for this topic at the specified difficulty.",
+  ];
+
+  if (avoid.length > 0) {
+    // Cap tokens: keep only the most recent stems, short form
+    const recent = avoid.slice(-40).map((q, i) => `${i + 1}. ${q.slice(0, 180)}`);
+    lines.push(
+      "",
+      "Do NOT repeat or closely rephrase any of these prior question stems:",
+      ...recent,
+      "Choose different subtopics, scenarios, and wording.",
+    );
+  }
+
+  lines.push(
+    "",
+    "Return JSON with key \"questions\" only. Each item needs:",
+    "question_number, question, options (4 strings), correct_answer, explanation.",
+  );
+
+  return lines.join("\n");
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -40,7 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const topic = String(body?.topic ?? "").trim();
-  const difficulty = body?.difficulty;
+  const difficulty = body?.difficulty as Difficulty;
   const numQuestions = Number(body?.numQuestions);
   const nonce = body?.nonce ? String(body.nonce) : String(Date.now());
   const avoid: string[] = Array.isArray(body?.avoid) ? (body.avoid as string[]).slice(-200) : [];
@@ -55,38 +156,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "numQuestions must be 1–30." });
   }
 
-  const avoidBlock =
-    avoid.length > 0
-      ? `\n\nSTRICT NO-REPEAT RULE: Do NOT repeat, rephrase, or produce semantically equivalent versions of any of these previously generated questions. Previously generated questions:\n${avoid.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
-      : "";
+  const systemInstruction = buildSystemInstruction(difficulty, numQuestions);
+  const userPrompt = buildUserPrompt({
+    topic,
+    difficulty,
+    numQuestions,
+    nonce,
+    avoid,
+  });
 
-  const prompt = `You are an expert exam generator for computer science and academic subjects.
-
-Generate exactly ${numQuestions} multiple-choice questions.
-
-Topic: ${topic}
-Difficulty: ${difficulty}
-Variation seed: ${nonce}
-${avoidBlock}
-
-Return ONLY valid JSON (no markdown fences, no extra text) with this exact shape:
-{
-  "questions": [
-    {
-      "question_number": 1,
-      "question": "...",
-      "options": ["option A text", "option B text", "option C text", "option D text"],
-      "correct_answer": "exact text of the correct option",
-      "explanation": "why the correct answer is right"
-    }
-  ]
-}
-
-Rules:
-- Exactly 4 options per question
-- correct_answer must match one option string exactly
-- Questions must fit the difficulty level
-- Do not number options inside the option strings`;
+  // Slightly lower temperature for cleaner MCQs; still varied via nonce + avoid list
+  const temperature =
+    difficulty === "Beginner" ? 0.55 : difficulty === "Intermediate" ? 0.7 : 0.85;
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -95,10 +176,16 @@ Rules:
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        systemInstruction: {
+          parts: [{ text: systemInstruction }],
+        },
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
         generationConfig: {
-          temperature: 0.8,
+          temperature,
+          topP: 0.9,
+          maxOutputTokens: Math.min(8192, 400 + numQuestions * 350),
           responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
         },
       }),
     });
@@ -109,8 +196,10 @@ Rules:
         return res.status(429).json({ error: "Gemini rate limit exceeded. Try again shortly." });
       }
       if (response.status === 400 || response.status === 403) {
+        console.error("Gemini rejected", text);
         return res.status(502).json({
-          error: "Gemini rejected the request. Check that GEMINI_API_KEY is valid and the Generative Language API is enabled.",
+          error:
+            "Gemini rejected the request. Check that GEMINI_API_KEY is valid and the Generative Language API is enabled.",
         });
       }
       console.error("Gemini error", response.status, text);
@@ -141,17 +230,42 @@ Rules:
       return res.status(502).json({ error: "Gemini did not return any questions." });
     }
 
-    const questions: ExamQuestion[] = parsed.questions.map((q, i) => ({
-      question_number: Number(q.question_number) || i + 1,
-      question: String(q.question ?? ""),
-      options: Array.isArray(q.options) ? q.options.map(String).slice(0, 4) : [],
-      correct_answer: String(q.correct_answer ?? ""),
-      explanation: String(q.explanation ?? ""),
-    }));
+    const questions: ExamQuestion[] = parsed.questions.map((q, i) => {
+      const options = Array.isArray(q.options)
+        ? q.options.map((o) => String(o).replace(/^[A-D][\).:\-]\s*/i, "").trim()).slice(0, 4)
+        : [];
+      let correct = String(q.correct_answer ?? "").replace(/^[A-D][\).:\-]\s*/i, "").trim();
+
+      // Align correct_answer to an option if the model drifted slightly
+      if (options.length === 4 && !options.includes(correct)) {
+        const lower = correct.toLowerCase();
+        const hit = options.find((o) => o.toLowerCase() === lower);
+        if (hit) correct = hit;
+        else {
+          const partial = options.find(
+            (o) => o.toLowerCase().includes(lower) || lower.includes(o.toLowerCase()),
+          );
+          if (partial) correct = partial;
+        }
+      }
+
+      return {
+        question_number: Number(q.question_number) || i + 1,
+        question: String(q.question ?? "").trim(),
+        options,
+        correct_answer: correct,
+        explanation: String(q.explanation ?? "").trim(),
+      };
+    });
 
     for (const q of questions) {
       if (!q.question || q.options.length !== 4 || !q.correct_answer) {
         return res.status(502).json({ error: "Gemini returned incomplete question data." });
+      }
+      if (!q.options.includes(q.correct_answer)) {
+        return res.status(502).json({
+          error: "Gemini returned a correct_answer that does not match any option.",
+        });
       }
     }
 
