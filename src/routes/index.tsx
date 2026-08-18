@@ -264,6 +264,8 @@ function ExamGeneratorPage() {
   const allRevealed = total > 0 && answeredCount === total;
   const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
   const progressPct = total > 0 ? Math.round((answeredCount / total) * 100) : 0;
+  const currentIndex = reviewMode ? reviewIndex : takingIndex;
+  const positionPct = total > 0 ? Math.round(((currentIndex + 1) / total) * 100) : 0;
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground p-3 sm:p-6 lg:p-8">
@@ -411,9 +413,16 @@ function ExamGeneratorPage() {
                   {allRevealed ? `${pct}%` : `${answeredCount}/${total}`}
                 </span>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full bg-primary transition-all duration-500"
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    allRevealed
+                      ? pct >= 70
+                        ? "bg-emerald-500"
+                        : "bg-amber-500"
+                      : "bg-primary"
+                  )}
                   style={{ width: `${allRevealed ? pct : progressPct}%` }}
                 />
               </div>
@@ -486,36 +495,78 @@ function ExamGeneratorPage() {
 
           {!mutation.isPending && total > 0 && (
             <>
-              {/* Progress dots */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {displayedQuestions.map((qq, i) => {
-                  const answered = answers[qq.question_number] !== undefined;
-                  const correct =
-                    answered && answers[qq.question_number] === qq.correct_answer;
-                  const idx = reviewMode ? reviewIndex : takingIndex;
-                  const isCurrent = i === idx;
-                  return (
-                    <button
-                      key={qq.question_number}
-                      type="button"
-                      onClick={() =>
-                        reviewMode ? setReviewIndex(i) : setTakingIndex(i)
-                      }
-                      className={cn(
-                        "h-2.5 shrink-0 rounded-full transition-all",
-                        isCurrent ? "w-6" : "w-2.5",
-                        !answered && "bg-muted",
-                        answered && !reviewMode && !allRevealed && "bg-primary",
-                        answered && (reviewMode || allRevealed) && correct && "bg-emerald-500",
-                        answered && (reviewMode || allRevealed) && !correct && "bg-destructive"
-                      )}
-                      aria-label={`Question ${qq.question_number}`}
+              {/* Progress visualization */}
+              <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {reviewMode ? "Review progress" : "Exam progress"}
+                    </span>
+                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
+                      {currentIndex + 1} / {total}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {reviewMode
+                      ? `${correctCount} correct`
+                      : `${answeredCount} of ${total} answered`}
+                  </span>
+                </div>
+
+                {/* Continuous progress bar */}
+                <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500 ease-out",
+                      allRevealed
+                        ? pct >= 70
+                          ? "bg-emerald-500"
+                          : "bg-amber-500"
+                        : "bg-primary"
+                    )}
+                    style={{
+                      width: `${allRevealed ? pct : Math.max(progressPct, positionPct * 0.15)}%`,
+                    }}
+                  />
+                  {/* Current position marker */}
+                  {!allRevealed && (
+                    <div
+                      className="absolute top-0 h-full w-1 rounded-full bg-foreground/80 shadow-sm transition-all duration-300"
+                      style={{
+                        left: `calc(${positionPct}% - 2px)`,
+                      }}
                     />
-                  );
-                })}
-                <span className="ml-auto shrink-0 pl-3 text-xs text-muted-foreground">
-                  {reviewMode ? "Review" : `${answeredCount}/${total} answered`}
-                </span>
+                  )}
+                </div>
+
+                {/* Segmented question indicators */}
+                <div className="flex items-center gap-1">
+                  {displayedQuestions.map((qq, i) => {
+                    const answered = answers[qq.question_number] !== undefined;
+                    const correct =
+                      answered && answers[qq.question_number] === qq.correct_answer;
+                    const isCurrent = i === currentIndex;
+                    return (
+                      <button
+                        key={qq.question_number}
+                        type="button"
+                        onClick={() =>
+                          reviewMode ? setReviewIndex(i) : setTakingIndex(i)
+                        }
+                        className={cn(
+                          "h-2 flex-1 rounded-full transition-all duration-200",
+                          isCurrent && "ring-2 ring-primary ring-offset-1 ring-offset-background",
+                          !answered && "bg-muted hover:bg-muted-foreground/30",
+                          answered && !reviewMode && !allRevealed && "bg-primary",
+                          answered && (reviewMode || allRevealed) && correct && "bg-emerald-500",
+                          answered && (reviewMode || allRevealed) && !correct && "bg-destructive"
+                        )}
+                        aria-label={`Question ${qq.question_number}`}
+                        title={`Question ${i + 1}${answered ? (correct ? " · Correct" : " · Incorrect") : ""}`}
+                      />
+                    );
+                  })}
+                </div>
               </div>
 
               {reviewMode
