@@ -26,6 +26,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +101,7 @@ function ExamGeneratorPage() {
   const [reviewMode, setReviewMode] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
   const [takingIndex, setTakingIndex] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -109,6 +113,16 @@ function ExamGeneratorPage() {
       // ignore
     }
   }, [topic, difficulty, numQuestions, autoGenerate, shuffleOptions]);
+
+  // Auto-collapse settings on mobile once an exam is generated
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    if (mq.matches && mutation.data) {
+      setSettingsOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mutation?.data]);
 
   const generateFn = useServerFn(generateExam);
   const SEEN_LS_KEY = "exam-gen-seen-v1";
@@ -160,6 +174,10 @@ function ExamGeneratorPage() {
       const next = [...prev, ...res.questions.map((q) => q.question)].slice(-500);
       seenRef.current.set(key, next);
       persistSeen();
+      // Collapse settings on mobile after generate
+      if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+        setSettingsOpen(false);
+      }
     },
   });
 
@@ -251,7 +269,6 @@ function ExamGeneratorPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [reviewMode, displayedQuestions, takingIndex, revealed]);
 
-  // Derived stats for sidebar
   const total = displayedQuestions.length;
   const answeredCount = displayedQuestions.filter(
     (q) => answers[q.question_number] !== undefined
@@ -268,205 +285,239 @@ function ExamGeneratorPage() {
   const positionPct = total > 0 ? Math.round(((currentIndex + 1) / total) * 100) : 0;
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground p-3 sm:p-6 lg:p-8">
-      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 lg:grid-cols-[380px_1fr] lg:gap-8">
-        {/* ===== Sidebar ===== */}
-        <aside className="flex h-fit flex-col gap-7 rounded-3xl border border-border bg-secondary/60 p-6 sm:p-7 lg:sticky lg:top-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <GraduationCap className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="font-display text-lg font-bold tracking-tight text-foreground">
-                Exam Generator
-              </h1>
-              <p className="text-xs text-muted-foreground">AI-powered MCQ drafting</p>
-            </div>
-          </div>
-
-          <form onSubmit={onSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label
-                htmlFor="topic"
-                className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
-              >
-                Topic
-              </Label>
-              <Input
-                id="topic"
-                placeholder="e.g. Data Structures"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                className="h-11 rounded-xl border-border bg-card px-4 text-sm focus-visible:ring-primary/30"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="difficulty"
-                  className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
-                >
-                  Difficulty
-                </Label>
-                <Select value={difficulty} onValueChange={(v) => setDifficulty(v as Difficulty)}>
-                  <SelectTrigger
-                    id="difficulty"
-                    className="h-11 w-full rounded-xl border-border bg-card px-3 text-sm"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Beginner">Beginner</SelectItem>
-                    <SelectItem value="Intermediate">Intermediate</SelectItem>
-                    <SelectItem value="Advanced">Advanced</SelectItem>
-                  </SelectContent>
-                </Select>
+    <div className="min-h-dvh w-full overflow-x-hidden bg-background text-foreground safe-pt safe-pb">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 p-3 sm:gap-6 sm:p-6 lg:grid-cols-[minmax(300px,360px)_1fr] lg:gap-8 lg:p-8">
+        {/* ===== Sidebar / Settings ===== */}
+        <aside className="order-1 flex h-fit flex-col overflow-hidden rounded-2xl border border-border bg-secondary/60 sm:rounded-3xl lg:sticky lg:top-6 lg:order-none">
+          {/* Header — always visible */}
+          <div className="flex items-center justify-between gap-3 p-4 sm:p-6 lg:p-7 lg:pb-0">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 sm:h-11 sm:w-11">
+                <GraduationCap className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="num"
-                  className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
-                >
-                  Questions
-                </Label>
-                <Input
-                  id="num"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={30}
-                  step={1}
-                  className="h-11 rounded-xl border-border bg-card px-4 text-sm"
-                  value={numQuestions === 0 ? "" : numQuestions}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    if (raw === "") {
-                      setNumQuestions(0);
-                      return;
-                    }
-                    const n = parseInt(raw, 10);
-                    if (Number.isNaN(n)) return;
-                    setNumQuestions(Math.min(30, Math.max(0, n)));
-                  }}
-                  onBlur={() => {
-                    if (!numQuestions || numQuestions < 1) setNumQuestions(1);
-                  }}
-                />
+              <div className="min-w-0">
+                <h1 className="truncate font-display text-base font-bold tracking-tight text-foreground sm:text-lg">
+                  Exam Generator
+                </h1>
+                <p className="truncate text-xs text-muted-foreground">AI-powered MCQ drafting</p>
               </div>
             </div>
-
-            <div className="space-y-3 rounded-2xl border border-border bg-card/70 p-4">
-              <label htmlFor="auto" className="flex cursor-pointer items-center justify-between">
-                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  Auto-generate
-                </span>
-                <Switch id="auto" checked={autoGenerate} onCheckedChange={setAutoGenerate} />
-              </label>
-              <label htmlFor="shuffle" className="flex cursor-pointer items-center justify-between">
-                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Shuffle className="h-3.5 w-3.5 text-muted-foreground" />
-                  Shuffle choices
-                </span>
-                <Switch
-                  id="shuffle"
-                  checked={shuffleOptions}
-                  onCheckedChange={setShuffleOptions}
-                />
-              </label>
-            </div>
-
+            {/* Mobile toggle */}
             <Button
-              type={autoGenerate ? "button" : "submit"}
-              onClick={autoGenerate ? () => run() : undefined}
-              disabled={mutation.isPending || !topic.trim()}
-              className="h-12 w-full rounded-2xl bg-primary font-display font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-[0.98]"
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 rounded-xl lg:hidden"
+              onClick={() => setSettingsOpen((o) => !o)}
+              aria-expanded={settingsOpen}
             >
-              {mutation.isPending ? (
+              <Settings2 className="mr-1.5 h-4 w-4" />
+              {settingsOpen ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating…
-                </>
-              ) : mutation.data ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Regenerate exam
+                  Hide <ChevronUp className="ml-1 h-3.5 w-3.5" />
                 </>
               ) : (
                 <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate exam
+                  Settings <ChevronDown className="ml-1 h-3.5 w-3.5" />
                 </>
               )}
             </Button>
-          </form>
+          </div>
 
-          {total > 0 && (
-            <div className="mt-1 border-t border-border/70 pt-6">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">
-                  {allRevealed ? "Score" : "Progress"}
-                </span>
-                <span className="text-sm font-bold text-primary">
-                  {allRevealed ? `${pct}%` : `${answeredCount}/${total}`}
-                </span>
-              </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-all duration-500",
-                    allRevealed
-                      ? pct >= 70
-                        ? "bg-emerald-500"
-                        : "bg-amber-500"
-                      : "bg-primary"
-                  )}
-                  style={{ width: `${allRevealed ? pct : progressPct}%` }}
+          {/* Collapsible body on mobile; always open on lg+ */}
+          <div
+            className={cn(
+              "flex flex-col gap-5 overflow-hidden transition-all duration-300 lg:gap-7",
+              settingsOpen
+                ? "max-h-[2000px] opacity-100"
+                : "max-h-0 opacity-0 lg:max-h-none lg:opacity-100",
+              settingsOpen ? "p-4 pt-0 sm:p-6 sm:pt-4 lg:p-7 lg:pt-6" : "px-4 lg:p-7 lg:pt-6"
+            )}
+          >
+            <form onSubmit={onSubmit} className="space-y-4 sm:space-y-5">
+              <div className="space-y-2">
+                <Label
+                  htmlFor="topic"
+                  className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                >
+                  Topic
+                </Label>
+                <Input
+                  id="topic"
+                  placeholder="e.g. Data Structures"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  className="h-11 rounded-xl border-border bg-card px-4 text-base sm:text-sm focus-visible:ring-primary/30"
+                  required
                 />
               </div>
-              {allRevealed && (
-                <div className="mt-4 flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 rounded-lg text-[11px] font-bold uppercase tracking-widest"
-                    onClick={() => {
-                      setReviewMode((r) => !r);
-                      setReviewIndex(0);
-                    }}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="difficulty"
+                    className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
                   >
-                    {reviewMode ? "Exit review" : "Review"}
-                  </Button>
-                  {correctCount < total && (
+                    Difficulty
+                  </Label>
+                  <Select value={difficulty} onValueChange={(v) => setDifficulty(v as Difficulty)}>
+                    <SelectTrigger
+                      id="difficulty"
+                      className="h-11 w-full rounded-xl border-border bg-card px-3 text-sm"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Beginner">Beginner</SelectItem>
+                      <SelectItem value="Intermediate">Intermediate</SelectItem>
+                      <SelectItem value="Advanced">Advanced</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="num"
+                    className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                  >
+                    Questions
+                  </Label>
+                  <Input
+                    id="num"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={30}
+                    step={1}
+                    className="h-11 rounded-xl border-border bg-card px-4 text-base sm:text-sm"
+                    value={numQuestions === 0 ? "" : numQuestions}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        setNumQuestions(0);
+                        return;
+                      }
+                      const n = parseInt(raw, 10);
+                      if (Number.isNaN(n)) return;
+                      setNumQuestions(Math.min(30, Math.max(0, n)));
+                    }}
+                    onBlur={() => {
+                      if (!numQuestions || numQuestions < 1) setNumQuestions(1);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-border bg-card/70 p-3 sm:p-4">
+                <label htmlFor="auto" className="flex cursor-pointer items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    Auto-generate
+                  </span>
+                  <Switch id="auto" checked={autoGenerate} onCheckedChange={setAutoGenerate} />
+                </label>
+                <label htmlFor="shuffle" className="flex cursor-pointer items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Shuffle className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    Shuffle choices
+                  </span>
+                  <Switch
+                    id="shuffle"
+                    checked={shuffleOptions}
+                    onCheckedChange={setShuffleOptions}
+                  />
+                </label>
+              </div>
+
+              <Button
+                type={autoGenerate ? "button" : "submit"}
+                onClick={autoGenerate ? () => run() : undefined}
+                disabled={mutation.isPending || !topic.trim()}
+                className="h-12 w-full rounded-2xl bg-primary font-display font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-[0.98]"
+              >
+                {mutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating…
+                  </>
+                ) : mutation.data ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Regenerate exam
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Generate exam
+                  </>
+                )}
+              </Button>
+            </form>
+
+            {total > 0 && (
+              <div className="border-t border-border/70 pt-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">
+                    {allRevealed ? "Score" : "Progress"}
+                  </span>
+                  <span className="text-sm font-bold text-primary">
+                    {allRevealed ? `${pct}%` : `${answeredCount}/{total}`}
+                  </span>
+                </div>
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      allRevealed
+                        ? pct >= 70
+                          ? "bg-emerald-500"
+                          : "bg-amber-500"
+                        : "bg-primary"
+                    )}
+                    style={{ width: `${allRevealed ? pct : progressPct}%` }}
+                  />
+                </div>
+                {allRevealed && (
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <Button
-                      size="sm"
                       variant="outline"
+                      size="sm"
                       className="flex-1 rounded-lg text-[11px] font-bold uppercase tracking-widest"
-                      disabled={mutation.isPending}
                       onClick={() => {
-                        const wrong = total - correctCount;
-                        run(Math.max(1, Math.min(30, wrong)));
+                        setReviewMode((r) => !r);
+                        setReviewIndex(0);
                       }}
                     >
-                      <RefreshCw
-                        className={cn(
-                          "mr-1.5 h-3 w-3",
-                          mutation.isPending && "animate-spin"
-                        )}
-                      />
-                      Retake wrong
+                      {reviewMode ? "Exit review" : "Review"}
                     </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                    {correctCount < total && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 rounded-lg text-[11px] font-bold uppercase tracking-widest"
+                        disabled={mutation.isPending}
+                        onClick={() => {
+                          const wrong = total - correctCount;
+                          run(Math.max(1, Math.min(30, wrong)));
+                        }}
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "mr-1.5 h-3 w-3",
+                            mutation.isPending && "animate-spin"
+                          )}
+                        />
+                        Retake wrong
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </aside>
 
         {/* ===== Main workspace ===== */}
-        <main className="flex flex-col gap-5">
+        <main className="order-2 flex min-w-0 flex-col gap-4 sm:gap-5 lg:order-none">
           {mutation.isError && (
             <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {(mutation.error as Error).message}
@@ -474,18 +525,18 @@ function ExamGeneratorPage() {
           )}
 
           {mutation.isPending && (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-[28px] border border-dashed border-border bg-card py-24 text-muted-foreground">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-card py-16 text-muted-foreground sm:rounded-[28px] sm:py-24">
               <Loader2 className="h-7 w-7 animate-spin text-primary" />
               <p className="text-sm">Drafting your exam…</p>
             </div>
           )}
 
           {!mutation.isPending && total === 0 && !mutation.isError && (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-[28px] border border-dashed border-border bg-card py-24 text-center text-muted-foreground">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-card px-4 py-16 text-center text-muted-foreground sm:rounded-[28px] sm:py-24">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Sparkles className="h-5 w-5" />
               </div>
-              <p className="text-sm">
+              <p className="max-w-xs text-sm">
                 {autoGenerate
                   ? "Start typing a topic — your exam appears here."
                   : "Set a topic and click Generate exam."}
@@ -496,11 +547,11 @@ function ExamGeneratorPage() {
           {!mutation.isPending && total > 0 && (
             <>
               {/* Progress visualization */}
-              <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-3">
+              <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-3 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">
-                      {reviewMode ? "Review progress" : "Exam progress"}
+                      {reviewMode ? "Review" : "Progress"}
                     </span>
                     <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
                       {currentIndex + 1} / {total}
@@ -513,8 +564,7 @@ function ExamGeneratorPage() {
                   </span>
                 </div>
 
-                {/* Continuous progress bar */}
-                <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
+                <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted sm:h-3">
                   <div
                     className={cn(
                       "h-full rounded-full transition-all duration-500 ease-out",
@@ -528,7 +578,6 @@ function ExamGeneratorPage() {
                       width: `${allRevealed ? pct : Math.max(progressPct, positionPct * 0.15)}%`,
                     }}
                   />
-                  {/* Current position marker */}
                   {!allRevealed && (
                     <div
                       className="absolute top-0 h-full w-1 rounded-full bg-foreground/80 shadow-sm transition-all duration-300"
@@ -539,8 +588,7 @@ function ExamGeneratorPage() {
                   )}
                 </div>
 
-                {/* Segmented question indicators */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 sm:gap-1">
                   {displayedQuestions.map((qq, i) => {
                     const answered = answers[qq.question_number] !== undefined;
                     const correct =
@@ -554,7 +602,7 @@ function ExamGeneratorPage() {
                           reviewMode ? setReviewIndex(i) : setTakingIndex(i)
                         }
                         className={cn(
-                          "h-2 flex-1 rounded-full transition-all duration-200",
+                          "h-2 min-w-0 flex-1 rounded-full transition-all duration-200 sm:h-2.5",
                           isCurrent && "ring-2 ring-primary ring-offset-1 ring-offset-background",
                           !answered && "bg-muted hover:bg-muted-foreground/30",
                           answered && !reviewMode && !allRevealed && "bg-primary",
@@ -569,9 +617,7 @@ function ExamGeneratorPage() {
                 </div>
               </div>
 
-              {reviewMode
-                ? renderReviewCard()
-                : renderTakingCard()}
+              {reviewMode ? renderReviewCard() : renderTakingCard()}
             </>
           )}
         </main>
@@ -579,7 +625,6 @@ function ExamGeneratorPage() {
     </div>
   );
 
-  // ---- Card renderers ----
   function renderTakingCard() {
     const safeIndex = Math.min(takingIndex, total - 1);
     const q = displayedQuestions[safeIndex];
@@ -588,18 +633,18 @@ function ExamGeneratorPage() {
     const isCorrect = selected === q.correct_answer;
 
     return (
-      <div className="flex flex-1 flex-col gap-6 rounded-[28px] border border-border bg-card p-6 shadow-sm sm:p-10">
+      <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:gap-6 sm:rounded-[28px] sm:p-8 md:p-10">
         <div>
-          <span className="mb-3 block font-display text-xs font-bold uppercase tracking-[0.2em] text-primary">
+          <span className="mb-2 block font-display text-[10px] font-bold uppercase tracking-[0.2em] text-primary sm:mb-3 sm:text-xs">
             Question {String(safeIndex + 1).padStart(2, "0")} of{" "}
             {String(total).padStart(2, "0")}
           </span>
-          <h2 className="text-base font-medium leading-snug text-foreground sm:text-lg sm:font-semibold md:text-xl md:font-bold">
+          <h2 className="text-[15px] font-semibold leading-snug text-foreground sm:text-lg md:text-xl md:font-bold">
             {q.question}
           </h2>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5 sm:space-y-3">
           {q.options.map((opt, i) => {
             const letter = String.fromCharCode(65 + i);
             const isSelected = selected === opt;
@@ -615,9 +660,9 @@ function ExamGeneratorPage() {
                 }}
                 disabled={isRevealed}
                 className={cn(
-                  "group flex w-full items-center gap-4 rounded-2xl border-2 p-4 text-left transition-all sm:p-5",
-                  "border-border bg-card hover:border-primary/40 hover:bg-primary/5",
-                  isRevealed && "cursor-default",
+                  "group flex w-full items-start gap-3 rounded-xl border-2 p-3.5 text-left transition-all sm:items-center sm:gap-4 sm:rounded-2xl sm:p-5",
+                  "border-border bg-card hover:border-primary/40 hover:bg-primary/5 active:scale-[0.99]",
+                  isRevealed && "cursor-default active:scale-100",
                   isRevealed && isAnswer && "border-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/10",
                   isRevealed && isSelected && !isAnswer && "border-destructive bg-destructive/10 hover:bg-destructive/10",
                   isRevealed && !isAnswer && !isSelected && "opacity-60"
@@ -625,7 +670,7 @@ function ExamGeneratorPage() {
               >
                 <span
                   className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-display text-sm font-bold transition-colors",
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-display text-sm font-bold transition-colors sm:mt-0 sm:h-9 sm:w-9",
                     "bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary",
                     isRevealed && isAnswer && "bg-emerald-500 text-white group-hover:bg-emerald-500 group-hover:text-white",
                     isRevealed && isSelected && !isAnswer && "bg-destructive text-white group-hover:bg-destructive group-hover:text-white"
@@ -633,14 +678,14 @@ function ExamGeneratorPage() {
                 >
                   {letter}
                 </span>
-                <span className="flex-1 text-sm font-medium text-foreground sm:text-base">
+                <span className="flex-1 pt-0.5 text-sm font-medium leading-snug text-foreground sm:pt-0 sm:text-base">
                   {opt}
                 </span>
                 {isRevealed && isAnswer && (
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 sm:mt-0" />
                 )}
                 {isRevealed && isSelected && !isAnswer && (
-                  <XCircle className="h-5 w-5 shrink-0 text-destructive" />
+                  <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive sm:mt-0" />
                 )}
               </button>
             );
@@ -650,7 +695,7 @@ function ExamGeneratorPage() {
         {isRevealed && (
           <div
             className={cn(
-              "animate-in fade-in slide-in-from-bottom-2 rounded-2xl border p-5",
+              "animate-in fade-in slide-in-from-bottom-2 rounded-xl border p-4 sm:rounded-2xl sm:p-5",
               isCorrect
                 ? "border-emerald-200 bg-emerald-50"
                 : "border-amber-200 bg-amber-50"
@@ -658,7 +703,7 @@ function ExamGeneratorPage() {
           >
             <div
               className={cn(
-                "mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider",
+                "mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider sm:text-xs",
                 isCorrect ? "text-emerald-700" : "text-amber-700"
               )}
             >
@@ -683,7 +728,7 @@ function ExamGeneratorPage() {
         {allRevealed && (
           <div
             className={cn(
-              "flex items-center gap-4 rounded-2xl border-2 p-5",
+              "flex flex-col gap-3 rounded-xl border-2 p-4 sm:flex-row sm:items-center sm:gap-4 sm:rounded-2xl sm:p-5",
               pct >= 70
                 ? "border-emerald-300 bg-emerald-50"
                 : "border-amber-300 bg-amber-50"
@@ -691,7 +736,7 @@ function ExamGeneratorPage() {
           >
             <div
               className={cn(
-                "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl",
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12",
                 pct >= 70
                   ? "bg-emerald-500/15 text-emerald-600"
                   : "bg-amber-500/15 text-amber-700"
@@ -699,7 +744,7 @@ function ExamGeneratorPage() {
             >
               <Trophy className="h-5 w-5" />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <p className="font-display text-sm font-bold text-foreground">
                 {pct >= 70 ? "Congratulations!" : "Keep practicing!"}
               </p>
@@ -709,7 +754,7 @@ function ExamGeneratorPage() {
             </div>
             <div
               className={cn(
-                "rounded-xl px-3 py-1.5 font-display text-sm font-bold",
+                "self-start rounded-xl px-3 py-1.5 font-display text-sm font-bold sm:self-auto",
                 pct >= 70 ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"
               )}
             >
@@ -718,12 +763,13 @@ function ExamGeneratorPage() {
           </div>
         )}
 
-        <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+        {/* Nav — sticky on mobile for easy thumbs */}
+        <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/50 pt-4 sm:border-0 sm:pt-2">
           <Button
             variant="outline"
             disabled={safeIndex === 0}
             onClick={() => setTakingIndex((i) => Math.max(0, i - 1))}
-            className="rounded-xl"
+            className="h-11 min-w-[7rem] flex-1 rounded-xl sm:h-10 sm:flex-none"
           >
             <ChevronLeft className="mr-1 h-4 w-4" />
             Previous
@@ -731,7 +777,7 @@ function ExamGeneratorPage() {
           <Button
             disabled={safeIndex === total - 1}
             onClick={() => setTakingIndex((i) => Math.min(total - 1, i + 1))}
-            className="rounded-xl bg-foreground font-display font-semibold text-background hover:bg-foreground/90"
+            className="h-11 min-w-[7rem] flex-1 rounded-xl bg-foreground font-display font-semibold text-background hover:bg-foreground/90 sm:h-10 sm:flex-none"
           >
             Next
             <ChevronRight className="ml-1 h-4 w-4" />
@@ -747,20 +793,20 @@ function ExamGeneratorPage() {
     const isCorrect = selected === q.correct_answer;
 
     return (
-      <div className="flex flex-1 flex-col gap-6 rounded-[28px] border border-border bg-card p-6 shadow-sm sm:p-10">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <span className="mb-3 block font-display text-xs font-bold uppercase tracking-[0.2em] text-primary">
+      <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:gap-6 sm:rounded-[28px] sm:p-8 md:p-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <span className="mb-2 block font-display text-[10px] font-bold uppercase tracking-[0.2em] text-primary sm:mb-3 sm:text-xs">
               Review · Question {String(reviewIndex + 1).padStart(2, "0")} of{" "}
               {String(total).padStart(2, "0")}
             </span>
-            <h2 className="text-base font-medium leading-snug text-foreground sm:text-lg sm:font-semibold md:text-xl md:font-bold">
+            <h2 className="text-[15px] font-semibold leading-snug text-foreground sm:text-lg md:text-xl md:font-bold">
               {q.question}
             </h2>
           </div>
           <span
             className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-bold",
+              "inline-flex w-fit shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-bold",
               isCorrect
                 ? "bg-emerald-500/15 text-emerald-700"
                 : "bg-destructive/15 text-destructive"
@@ -775,7 +821,7 @@ function ExamGeneratorPage() {
           </span>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5 sm:space-y-3">
           {q.options.map((opt, i) => {
             const letter = String.fromCharCode(65 + i);
             const isSelected = selected === opt;
@@ -784,7 +830,7 @@ function ExamGeneratorPage() {
               <div
                 key={i}
                 className={cn(
-                  "flex items-center gap-4 rounded-2xl border-2 p-4 sm:p-5",
+                  "flex items-start gap-3 rounded-xl border-2 p-3.5 sm:items-center sm:gap-4 sm:rounded-2xl sm:p-5",
                   "border-border",
                   isAnswer && "border-emerald-500 bg-emerald-500/10",
                   isSelected && !isAnswer && "border-destructive bg-destructive/10",
@@ -793,7 +839,7 @@ function ExamGeneratorPage() {
               >
                 <span
                   className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-display text-sm font-bold",
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-display text-sm font-bold sm:mt-0 sm:h-9 sm:w-9",
                     "bg-muted text-muted-foreground",
                     isAnswer && "bg-emerald-500 text-white",
                     isSelected && !isAnswer && "bg-destructive text-white"
@@ -801,32 +847,32 @@ function ExamGeneratorPage() {
                 >
                   {letter}
                 </span>
-                <span className="flex-1 text-sm font-medium text-foreground sm:text-base">
+                <span className="flex-1 pt-0.5 text-sm font-medium leading-snug text-foreground sm:pt-0 sm:text-base">
                   {opt}
                 </span>
-                {isAnswer && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+                {isAnswer && <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 sm:mt-0" />}
                 {isSelected && !isAnswer && (
-                  <XCircle className="h-5 w-5 text-destructive" />
+                  <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive sm:mt-0" />
                 )}
               </div>
             );
           })}
         </div>
 
-        <div className="rounded-2xl border border-border bg-secondary/60 p-5">
-          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="rounded-xl border border-border bg-secondary/60 p-4 sm:rounded-2xl sm:p-5">
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground sm:text-xs">
             <Info className="h-4 w-4" />
             Explanation
           </div>
           <p className="text-sm leading-relaxed text-foreground">{q.explanation}</p>
         </div>
 
-        <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-4 sm:border-0 sm:pt-2">
           <Button
             variant="outline"
             disabled={reviewIndex === 0}
             onClick={() => setReviewIndex((i) => Math.max(0, i - 1))}
-            className="rounded-xl"
+            className="h-11 min-w-[6.5rem] flex-1 rounded-xl sm:h-10 sm:flex-none"
           >
             <ChevronLeft className="mr-1 h-4 w-4" />
             Previous
@@ -834,14 +880,14 @@ function ExamGeneratorPage() {
           <Button
             variant="ghost"
             onClick={() => setReviewMode(false)}
-            className="rounded-xl"
+            className="h-11 order-last w-full rounded-xl sm:order-none sm:h-10 sm:w-auto"
           >
             Exit review
           </Button>
           <Button
             disabled={reviewIndex === total - 1}
             onClick={() => setReviewIndex((i) => Math.min(total - 1, i + 1))}
-            className="rounded-xl bg-foreground font-display font-semibold text-background hover:bg-foreground/90"
+            className="h-11 min-w-[6.5rem] flex-1 rounded-xl bg-foreground font-display font-semibold text-background hover:bg-foreground/90 sm:h-10 sm:flex-none"
           >
             Next
             <ChevronRight className="ml-1 h-4 w-4" />
