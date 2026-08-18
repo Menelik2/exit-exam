@@ -8,6 +8,8 @@ type ExamQuestion = {
   explanation: string;
 };
 
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -22,11 +24,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = process.env.LOVABLE_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
       error:
-        "Server is missing LOVABLE_API_KEY. Add it in Vercel → Project → Settings → Environment Variables, then redeploy.",
+        "Server is missing GEMINI_API_KEY. Add it in Vercel → Project → Settings → Environment Variables, then redeploy.",
     });
   }
 
@@ -53,105 +55,107 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "numQuestions must be 1–30." });
   }
 
-  const systemPrompt = `You are an expert Computer Science professor and exam generator. Your task is to generate a multiple-choice exam based on the topic and difficulty level provided by the user.
-
-You must respond ONLY with a JSON object. Do not include any conversational text before or after the JSON.
-
-The JSON structure must be an object with a "questions" array, where each item contains:
-- "question_number": (int) The number of the question.
-- "question": (string) The exam question.
-- "options": (array of strings) Exactly 4 multiple-choice options.
-- "correct_answer": (string) The exact string of the correct option (must match one option verbatim).
-- "explanation": (string) A detailed explanation of why the correct answer is right, and why common misconceptions are incorrect.`;
-
   const avoidBlock =
     avoid.length > 0
-      ? `\n\nSTRICT NO-REPEAT RULE: Do NOT repeat, rephrase, or produce semantically equivalent versions of any of these previously generated questions. Pick entirely different subtopics, angles, scenarios, and wording. Previously generated questions (one per line):\n${avoid.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
+      ? `\n\nSTRICT NO-REPEAT RULE: Do NOT repeat, rephrase, or produce semantically equivalent versions of any of these previously generated questions. Previously generated questions:\n${avoid.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
       : "";
 
-  const userPrompt = `Topic: ${topic}
+  const prompt = `You are an expert exam generator for computer science and academic subjects.
+
+Generate exactly ${numQuestions} multiple-choice questions.
+
+Topic: ${topic}
 Difficulty: ${difficulty}
-Number of Questions: ${numQuestions}
-Variation seed: ${nonce} — generate a fresh, distinct set of questions different from any prior generation. Vary subtopics, phrasing, and which option is correct.${avoidBlock}`;
+Variation seed: ${nonce}
+${avoidBlock}
+
+Return ONLY valid JSON (no markdown fences, no extra text) with this exact shape:
+{
+  "questions": [
+    {
+      "question_number": 1,
+      "question": "...",
+      "options": ["option A text", "option B text", "option C text", "option D text"],
+      "correct_answer": "exact text of the correct option",
+      "explanation": "why the correct answer is right"
+    }
+  ]
+}
+
+Rules:
+- Exactly 4 options per question
+- correct_answer must match one option string exactly
+- Questions must fit the difficulty level
+- Do not number options inside the option strings`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const response = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "return_exam",
-              description: "Return the generated multiple-choice exam",
-              parameters: {
-                type: "object",
-                properties: {
-                  questions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        question_number: { type: "integer" },
-                        question: { type: "string" },
-                        options: {
-                          type: "array",
-                          items: { type: "string" },
-                          minItems: 4,
-                          maxItems: 4,
-                        },
-                        correct_answer: { type: "string" },
-                        explanation: { type: "string" },
-                      },
-                      required: [
-                        "question_number",
-                        "question",
-                        "options",
-                        "correct_answer",
-                        "explanation",
-                      ],
-                      additionalProperties: false,
-                    },
-                  },
-                },
-                required: ["questions"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "return_exam" } },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.8,
+          responseMimeType: "application/json",
+        },
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return res.status(429).json({ error: "Rate limit exceeded. Please try again in a moment." });
-      }
-      if (response.status === 402) {
-        return res.status(402).json({ error: "AI credits exhausted. Please add credits to continue." });
-      }
       const text = await response.text();
-      return res.status(502).json({ error: `AI request failed: ${response.status}` });
+      if (response.status === 429) {
+        return res.status(429).json({ error: "Gemini rate limit exceeded. Try again shortly." });
+      }
+      if (response.status === 400 || response.status === 403) {
+        return res.status(502).json({
+          error: "Gemini rejected the request. Check that GEMINI_API_KEY is valid and the Generative Language API is enabled.",
+        });
+      }
+      console.error("Gemini error", response.status, text);
+      return res.status(502).json({ error: `Gemini request failed (${response.status}).` });
     }
 
     const json = await response.json();
-    const toolCall = json.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) {
-      return res.status(502).json({ error: "AI did not return structured exam data" });
+    const rawText =
+      json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ??
+      "";
+
+    if (!rawText) {
+      return res.status(502).json({ error: "Gemini returned an empty response." });
     }
 
-    const parsed = JSON.parse(toolCall.function.arguments) as { questions: ExamQuestion[] };
-    return res.status(200).json({ questions: parsed.questions });
+    let parsed: { questions?: ExamQuestion[] };
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (!match) {
+        return res.status(502).json({ error: "Gemini did not return valid JSON." });
+      }
+      parsed = JSON.parse(match[0]);
+    }
+
+    if (!parsed?.questions || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+      return res.status(502).json({ error: "Gemini did not return any questions." });
+    }
+
+    const questions: ExamQuestion[] = parsed.questions.map((q, i) => ({
+      question_number: Number(q.question_number) || i + 1,
+      question: String(q.question ?? ""),
+      options: Array.isArray(q.options) ? q.options.map(String).slice(0, 4) : [],
+      correct_answer: String(q.correct_answer ?? ""),
+      explanation: String(q.explanation ?? ""),
+    }));
+
+    for (const q of questions) {
+      if (!q.question || q.options.length !== 4 || !q.correct_answer) {
+        return res.status(502).json({ error: "Gemini returned incomplete question data." });
+      }
+    }
+
+    return res.status(200).json({ questions });
   } catch (err) {
     console.error(err);
     return res.status(500).json({
