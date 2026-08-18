@@ -29,6 +29,8 @@ import {
   Settings2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +64,13 @@ function shuffle<T>(arr: T[], seed: number): T[] {
   return a;
 }
 
+function formatTime(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
 const LS_KEY = "exam-gen-settings";
 
 function loadSettings() {
@@ -82,6 +91,11 @@ function loadSettings() {
           : 5,
       autoGenerate: typeof parsed.autoGenerate === "boolean" ? parsed.autoGenerate : true,
       shuffleOptions: typeof parsed.shuffleOptions === "boolean" ? parsed.shuffleOptions : false,
+      timerEnabled: typeof parsed.timerEnabled === "boolean" ? parsed.timerEnabled : false,
+      timerMinutes:
+        typeof parsed.timerMinutes === "number"
+          ? Math.max(1, Math.min(180, parsed.timerMinutes))
+          : 15,
     };
   } catch {
     return null;
@@ -95,6 +109,8 @@ function ExamGeneratorPage() {
   const [numQuestions, setNumQuestions] = useState(saved?.numQuestions ?? 5);
   const [autoGenerate, setAutoGenerate] = useState(saved?.autoGenerate ?? true);
   const [shuffleOptions, setShuffleOptions] = useState(saved?.shuffleOptions ?? false);
+  const [timerEnabled, setTimerEnabled] = useState(saved?.timerEnabled ?? false);
+  const [timerMinutes, setTimerMinutes] = useState(saved?.timerMinutes ?? 15);
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
@@ -102,17 +118,28 @@ function ExamGeneratorPage() {
   const [reviewIndex, setReviewIndex] = useState(0);
   const [takingIndex, setTakingIndex] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timeUp, setTimeUp] = useState(false);
 
   useEffect(() => {
     try {
       localStorage.setItem(
         LS_KEY,
-        JSON.stringify({ topic, difficulty, numQuestions, autoGenerate, shuffleOptions })
+        JSON.stringify({
+          topic,
+          difficulty,
+          numQuestions,
+          autoGenerate,
+          shuffleOptions,
+          timerEnabled,
+          timerMinutes,
+        })
       );
     } catch {
       // ignore
     }
-  }, [topic, difficulty, numQuestions, autoGenerate, shuffleOptions]);
+  }, [topic, difficulty, numQuestions, autoGenerate, shuffleOptions, timerEnabled, timerMinutes]);
 
   const generateFn = useServerFn(generateExam);
   const SEEN_LS_KEY = "exam-gen-seen-v1";
@@ -144,6 +171,10 @@ function ExamGeneratorPage() {
     }
   }, []);
 
+  const stopTimer = useCallback(() => {
+    setTimerRunning(false);
+  }, []);
+
   const mutation = useMutation({
     mutationFn: (vars: {
       topic: string;
@@ -167,6 +198,16 @@ function ExamGeneratorPage() {
       if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
         setSettingsOpen(false);
       }
+      if (timerEnabled) {
+        const secs = Math.max(1, timerMinutes) * 60;
+        setTimeLeft(secs);
+        setTimeUp(false);
+        setTimerRunning(true);
+      } else {
+        setTimerRunning(false);
+        setTimeLeft(0);
+        setTimeUp(false);
+      }
     },
   });
 
@@ -189,6 +230,9 @@ function ExamGeneratorPage() {
     setReviewMode(false);
     setReviewIndex(0);
     setTakingIndex(0);
+    setTimerRunning(false);
+    setTimeUp(false);
+    setTimeLeft(0);
   }, [topic, difficulty, numQuestions]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,6 +277,43 @@ function ExamGeneratorPage() {
   }, [shuffleOptions, shuffleSeed]);
 
   useEffect(() => {
+    if (!timerRunning) return;
+    const id = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          setTimerRunning(false);
+          setTimeUp(true);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [timerRunning]);
+
+  useEffect(() => {
+    if (!timeUp || displayedQuestions.length === 0) return;
+    setRevealed((prev) => {
+      const next = { ...prev };
+      for (const q of displayedQuestions) {
+        next[q.question_number] = true;
+      }
+      return next;
+    });
+    stopTimer();
+  }, [timeUp, displayedQuestions, stopTimer]);
+
+  useEffect(() => {
+    if (!timerRunning) return;
+    const total = displayedQuestions.length;
+    if (total === 0) return;
+    const answered = displayedQuestions.filter((q) => answers[q.question_number] !== undefined).length;
+    if (answered === total || reviewMode) {
+      stopTimer();
+    }
+  }, [answers, displayedQuestions, reviewMode, timerRunning, stopTimer]);
+
+  useEffect(() => {
     if (reviewMode || displayedQuestions.length === 0) return;
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
@@ -248,7 +329,7 @@ function ExamGeneratorPage() {
       } else if (["1", "2", "3", "4"].includes(e.key)) {
         const n = parseInt(e.key, 10) - 1;
         const opt = q.options[n];
-        if (opt && !revealed[q.question_number]) {
+        if (opt && !revealed[q.question_number] && !timeUp) {
           setAnswers((a) => ({ ...a, [q.question_number]: opt }));
           setRevealed((r) => ({ ...r, [q.question_number]: true }));
         }
@@ -256,7 +337,7 @@ function ExamGeneratorPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [reviewMode, displayedQuestions, takingIndex, revealed]);
+  }, [reviewMode, displayedQuestions, takingIndex, revealed, timeUp]);
 
   const total = displayedQuestions.length;
   const answeredCount = displayedQuestions.filter(
@@ -267,11 +348,13 @@ function ExamGeneratorPage() {
       revealed[q.question_number] &&
       answers[q.question_number] === q.correct_answer
   ).length;
-  const allRevealed = total > 0 && answeredCount === total;
+  const allRevealed = total > 0 && (answeredCount === total || timeUp);
   const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
   const progressPct = total > 0 ? Math.round((answeredCount / total) * 100) : 0;
   const currentIndex = reviewMode ? reviewIndex : takingIndex;
   const positionPct = total > 0 ? Math.round(((currentIndex + 1) / total) * 100) : 0;
+  const timerUrgent = timerRunning && timeLeft > 0 && timeLeft <= 60;
+  const timerWarning = timerRunning && timeLeft > 60 && timeLeft <= 180;
 
   return (
     <div className="min-h-dvh w-full overflow-x-hidden bg-background text-foreground safe-pt safe-pb">
@@ -411,6 +494,38 @@ function ExamGeneratorPage() {
                     onCheckedChange={setShuffleOptions}
                   />
                 </label>
+                <label htmlFor="timer" className="flex cursor-pointer items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Timer className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    Exam timer
+                  </span>
+                  <Switch id="timer" checked={timerEnabled} onCheckedChange={setTimerEnabled} />
+                </label>
+                {timerEnabled && (
+                  <div className="space-y-2 border-t border-border/60 pt-3">
+                    <Label
+                      htmlFor="timer-mins"
+                      className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                    >
+                      Duration (minutes)
+                    </Label>
+                    <Input
+                      id="timer-mins"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={180}
+                      step={1}
+                      className="h-11 rounded-xl border-border bg-card px-4 text-base sm:text-sm"
+                      value={timerMinutes}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value, 10);
+                        if (Number.isNaN(n)) return;
+                        setTimerMinutes(Math.min(180, Math.max(1, n)));
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               <Button
@@ -540,11 +655,29 @@ function ExamGeneratorPage() {
                       {currentIndex + 1} / {total}
                     </span>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    {reviewMode
-                      ? `${correctCount} correct`
-                      : `${answeredCount} of ${total} answered`}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {(timerRunning || timeUp) && (
+                      <div
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-xs font-bold tabular-nums sm:text-sm",
+                          timeUp && "bg-destructive/15 text-destructive",
+                          timerUrgent && !timeUp && "bg-destructive/15 text-destructive animate-pulse",
+                          timerWarning && !timeUp && "bg-amber-500/15 text-amber-700",
+                          !timeUp && !timerUrgent && !timerWarning && "bg-muted text-foreground"
+                        )}
+                        aria-live="polite"
+                        aria-label={timeUp ? "Time is up" : `Time remaining ${formatTime(timeLeft)}`}
+                      >
+                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                        {timeUp ? "Time up" : formatTime(timeLeft)}
+                      </div>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {reviewMode
+                        ? `${correctCount} correct`
+                        : `${answeredCount} of ${total} answered`}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted sm:h-3">
@@ -600,6 +733,12 @@ function ExamGeneratorPage() {
                 </div>
               </div>
 
+              {timeUp && !reviewMode && (
+                <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  Time is up. Unanswered questions count as incorrect. You can still review your answers.
+                </div>
+              )}
+
               {reviewMode ? renderReviewCard() : renderTakingCard()}
             </>
           )}
@@ -614,6 +753,7 @@ function ExamGeneratorPage() {
     const selected = answers[q.question_number];
     const isRevealed = revealed[q.question_number];
     const isCorrect = selected === q.correct_answer;
+    const locked = timeUp || isRevealed;
 
     return (
       <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:gap-6 sm:rounded-[28px] sm:p-8 md:p-10">
@@ -637,15 +777,15 @@ function ExamGeneratorPage() {
                 key={i}
                 type="button"
                 onClick={() => {
-                  if (isRevealed) return;
+                  if (locked) return;
                   setAnswers((a) => ({ ...a, [q.question_number]: opt }));
                   setRevealed((r) => ({ ...r, [q.question_number]: true }));
                 }}
-                disabled={isRevealed}
+                disabled={locked}
                 className={cn(
                   "group flex w-full items-start gap-3 rounded-xl border-2 p-3.5 text-left transition-all sm:items-center sm:gap-4 sm:rounded-2xl sm:p-5",
                   "border-border bg-card hover:border-primary/40 hover:bg-primary/5 active:scale-[0.99]",
-                  isRevealed && "cursor-default active:scale-100",
+                  locked && "cursor-default active:scale-100",
                   isRevealed && isAnswer && "border-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/10",
                   isRevealed && isSelected && !isAnswer && "border-destructive bg-destructive/10 hover:bg-destructive/10",
                   isRevealed && !isAnswer && !isSelected && "opacity-60"
@@ -695,7 +835,7 @@ function ExamGeneratorPage() {
               ) : (
                 <Info className="h-4 w-4" />
               )}
-              {isCorrect ? "Correct" : `Answer: ${q.correct_answer}`}
+              {isCorrect ? "Correct" : selected ? `Answer: ${q.correct_answer}` : `Correct answer: ${q.correct_answer}`}
             </div>
             <p
               className={cn(
@@ -729,7 +869,7 @@ function ExamGeneratorPage() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-display text-sm font-bold text-foreground">
-                {pct >= 70 ? "Congratulations!" : "Keep practicing!"}
+                {timeUp ? "Time is up!" : pct >= 70 ? "Congratulations!" : "Keep practicing!"}
               </p>
               <p className="text-xs text-muted-foreground">
                 You scored {correctCount}/{total} ({pct}%).
@@ -799,7 +939,7 @@ function ExamGeneratorPage() {
             ) : (
               <XCircle className="h-3.5 w-3.5" />
             )}
-            {isCorrect ? "Correct" : "Incorrect"}
+            {isCorrect ? "Correct" : selected ? "Incorrect" : "Unanswered"}
           </span>
         </div>
 
