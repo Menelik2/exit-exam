@@ -10,17 +10,6 @@ type ExamQuestion = {
 
 type Difficulty = "Beginner" | "Intermediate" | "Advanced";
 
-/** Prefer env override, then try stable public model ids until one works. */
-const MODEL_CANDIDATES = [
-  process.env.GEMINI_MODEL,
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-latest",
-  "gemini-1.5-flash-8b",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-001",
-  "gemini-pro",
-].filter((m): m is string => Boolean(m && m.trim()));
-
 const DIFFICULTY_GUIDE: Record<Difficulty, string> = {
   Beginner:
     "Focus on definitions, basic concepts, and direct recall. Use clear language. Avoid multi-step reasoning.",
@@ -117,6 +106,36 @@ function buildUserPrompt(params: {
   );
 
   return lines.join("\n");
+}
+
+/** List models that support generateContent for this API key. */
+async function listGenerateContentModels(apiKey: string): Promise<string[]> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ListModels failed (${response.status}): ${text.slice(0, 300)}`);
+  }
+
+  const json = (await response.json()) as {
+    models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+  };
+
+  const names = (json.models ?? [])
+    .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
+    .map((m) => (m.name ?? "").replace(/^models\//, ""))
+    .filter(Boolean);
+
+  // Prefer flash (fast/cheap), then pro, then everything else
+  const score = (id: string) => {
+    const n = id.toLowerCase();
+    if (n.includes("flash") && n.includes("lite")) return 0;
+    if (n.includes("flash")) return 1;
+    if (n.includes("pro")) return 2;
+    return 3;
+  };
+
+  return [...new Set(names)].sort((a, b) => score(a) - score(b) || a.localeCompare(b));
 }
 
 async function callGemini(params: {
@@ -231,15 +250,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const temperature =
     difficulty === "Beginner" ? 0.55 : difficulty === "Intermediate" ? 0.7 : 0.85;
 
-  // Deduplicate while preserving order
-  const models = [...new Set(MODEL_CANDIDATES)];
-
   try {
+    let models: string[] = [];
+    try {
+      models = await listGenerateContentModels(apiKey);
+    } catch (e) {
+      console.error(e);
+      return res.status(502).json({
+        error:
+          "Could not list Gemini models for this API key. Check that GEMINI_API_KEY is valid.",
+      });
+    }
+
+    // Optional override: only use if it exists for this key
+    const preferred = process.env.GEMINI_MODEL?.trim();
+    if (preferred) {
+      models = [preferred, ...models.filter((m) => m !== preferred)];
+    }
+
+    if (models.length === 0) {
+      return res.status(502).json({
+        error:
+          "No Gemini models support generateContent for this API key. Create a new key at https://aistudio.google.com/apikey",
+      });
+    }
+
+    // Try a few best models only (avoid long loops)
+    const tryModels = models.slice(0, 6);
+
     let lastError = "";
     let rawText = "";
+    let usedModel = "";
 
-    for (const model of models) {
-      // Try with schema first; some older models reject responseSchema → retry without
+    for (const model of tryModels) {
       for (const useSchema of [true, false]) {
         const result = await callGemini({
           apiKey,
@@ -253,21 +296,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (result.ok) {
           rawText = result.text;
+          usedModel = model;
           break;
         }
 
-        lastError = `${model} (${result.status}): ${result.body.slice(0, 240)}`;
+        lastError = `${model} (${result.status}): ${result.body.slice(0, 280)}`;
         console.error("Gemini attempt failed", lastError);
 
-        // Model not found → try next model
         if (result.status === 404) break;
-        // Bad request may be schema-related → try without schema once
         if (result.status === 400 && useSchema) continue;
-        // Auth / hard failures → stop
         if (result.status === 403 || result.status === 401) {
           return res.status(502).json({
             error:
-              "Gemini rejected the API key. Check GEMINI_API_KEY and that Generative Language API is enabled.",
+              "Gemini rejected the API key. Create a new key at https://aistudio.google.com/apikey and update GEMINI_API_KEY.",
           });
         }
         if (result.status === 429) {
@@ -279,7 +320,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!rawText) {
       return res.status(502).json({
-        error: `Gemini request failed (no available model). Last error: ${lastError || "unknown"}`,
+        error: `Gemini request failed. Tried: ${tryModels.join(", ")}. Last error: ${lastError || "unknown"}`,
       });
     }
 
@@ -336,6 +377,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    res.setHeader("X-Gemini-Model", usedModel);
     return res.status(200).json({ questions });
   } catch (err) {
     console.error(err);
