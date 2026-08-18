@@ -10,7 +10,16 @@ type ExamQuestion = {
 
 type Difficulty = "Beginner" | "Intermediate" | "Advanced";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+/** Prefer env override, then try stable public model ids until one works. */
+const MODEL_CANDIDATES = [
+  process.env.GEMINI_MODEL,
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash-8b",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-001",
+  "gemini-pro",
+].filter((m): m is string => Boolean(m && m.trim()));
 
 const DIFFICULTY_GUIDE: Record<Difficulty, string> = {
   Beginner:
@@ -92,7 +101,6 @@ function buildUserPrompt(params: {
   ];
 
   if (avoid.length > 0) {
-    // Cap tokens: keep only the most recent stems, short form
     const recent = avoid.slice(-40).map((q, i) => `${i + 1}. ${q.slice(0, 180)}`);
     lines.push(
       "",
@@ -109,6 +117,61 @@ function buildUserPrompt(params: {
   );
 
   return lines.join("\n");
+}
+
+async function callGemini(params: {
+  apiKey: string;
+  model: string;
+  systemInstruction: string;
+  userPrompt: string;
+  temperature: number;
+  numQuestions: number;
+  useSchema: boolean;
+}): Promise<{ ok: true; text: string } | { ok: false; status: number; body: string }> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(params.model)}:generateContent?key=${encodeURIComponent(params.apiKey)}`;
+
+  const generationConfig: Record<string, unknown> = {
+    temperature: params.temperature,
+    topP: 0.9,
+    maxOutputTokens: Math.min(8192, 400 + params.numQuestions * 350),
+    responseMimeType: "application/json",
+  };
+  if (params.useSchema) {
+    generationConfig.responseSchema = RESPONSE_SCHEMA;
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: params.systemInstruction }],
+      },
+      contents: [{ role: "user", parts: [{ text: params.userPrompt }] }],
+      generationConfig,
+    }),
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    return { ok: false, status: response.status, body };
+  }
+
+  let json: {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return { ok: false, status: 502, body: "Invalid JSON from Gemini" };
+  }
+
+  const text =
+    json?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  if (!text) {
+    return { ok: false, status: 502, body: "Empty candidate text" };
+  }
+  return { ok: true, text };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -165,54 +228,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     avoid,
   });
 
-  // Slightly lower temperature for cleaner MCQs; still varied via nonce + avoid list
   const temperature =
     difficulty === "Beginner" ? 0.55 : difficulty === "Intermediate" ? 0.7 : 0.85;
 
+  // Deduplicate while preserving order
+  const models = [...new Set(MODEL_CANDIDATES)];
+
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    let lastError = "";
+    let rawText = "";
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemInstruction }],
-        },
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        generationConfig: {
+    for (const model of models) {
+      // Try with schema first; some older models reject responseSchema → retry without
+      for (const useSchema of [true, false]) {
+        const result = await callGemini({
+          apiKey,
+          model,
+          systemInstruction,
+          userPrompt,
           temperature,
-          topP: 0.9,
-          maxOutputTokens: Math.min(8192, 400 + numQuestions * 350),
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      if (response.status === 429) {
-        return res.status(429).json({ error: "Gemini rate limit exceeded. Try again shortly." });
-      }
-      if (response.status === 400 || response.status === 403) {
-        console.error("Gemini rejected", text);
-        return res.status(502).json({
-          error:
-            "Gemini rejected the request. Check that GEMINI_API_KEY is valid and the Generative Language API is enabled.",
+          numQuestions,
+          useSchema,
         });
+
+        if (result.ok) {
+          rawText = result.text;
+          break;
+        }
+
+        lastError = `${model} (${result.status}): ${result.body.slice(0, 240)}`;
+        console.error("Gemini attempt failed", lastError);
+
+        // Model not found → try next model
+        if (result.status === 404) break;
+        // Bad request may be schema-related → try without schema once
+        if (result.status === 400 && useSchema) continue;
+        // Auth / hard failures → stop
+        if (result.status === 403 || result.status === 401) {
+          return res.status(502).json({
+            error:
+              "Gemini rejected the API key. Check GEMINI_API_KEY and that Generative Language API is enabled.",
+          });
+        }
+        if (result.status === 429) {
+          return res.status(429).json({ error: "Gemini rate limit exceeded. Try again shortly." });
+        }
       }
-      console.error("Gemini error", response.status, text);
-      return res.status(502).json({ error: `Gemini request failed (${response.status}).` });
+      if (rawText) break;
     }
 
-    const json = await response.json();
-    const rawText =
-      json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ??
-      "";
-
     if (!rawText) {
-      return res.status(502).json({ error: "Gemini returned an empty response." });
+      return res.status(502).json({
+        error: `Gemini request failed (no available model). Last error: ${lastError || "unknown"}`,
+      });
     }
 
     let parsed: { questions?: ExamQuestion[] };
@@ -236,7 +304,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         : [];
       let correct = String(q.correct_answer ?? "").replace(/^[A-D][\).:\-]\s*/i, "").trim();
 
-      // Align correct_answer to an option if the model drifted slightly
       if (options.length === 4 && !options.includes(correct)) {
         const lower = correct.toLowerCase();
         const hit = options.find((o) => o.toLowerCase() === lower);
